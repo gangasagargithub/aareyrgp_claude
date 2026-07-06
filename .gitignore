@@ -1,0 +1,11 @@
+# Ignore config folder
+config/
+
+# Optional: Ignore vendor (if using Composer)
+vendor/
+
+# Optional: Ignore log files
+*.log
+
+# Optional: Ignore environment files
+.env
