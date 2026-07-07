@@ -51,6 +51,23 @@ audit.php                Audit log viewer
 logout.php               Session teardown
 ```
 
+## Customer & Contract Module
+
+Mirrors the onboarding workflow from `Process_to_Create_Customer_and_Contact.docx`:
+
+1. **Customer Master** (`customers.php`) — create the customer + corporate/Indian office addresses
+2. **Contact Person** (`customer_view.php`) — add billing contact(s) per customer
+3. **Billing Address** (`customer_view.php`) — add one or more billing addresses per customer
+4. **Create Offer** (`contracts.php`) — start a new offer against a customer
+5. **Operators, Rates, Attachments** (`contract_view.php`) — add operator/contract mappings, rate structure (grouped rows: location, per, priority, mod type, rate), and upload the signed contract
+6. **Finalize** (`contract_view.php`) — set start/end dates and convert the offer into an active contract
+
+Tables: `customers`, `customer_addresses`, `customer_contacts`, `customer_billing_addresses`,
+`contracts`, `contract_operators`, `contract_rate_groups`, `contract_rate_items`, `contract_attachments`.
+
+Uploaded signed contracts are stored under `uploads/contracts/{contract_id}/` — make sure this
+directory is writable by the web server user, and add it to `.gitignore` if using version control.
+
 ## Notes
 
 - Passwords are hashed with bcrypt (`password_hash()` / `password_verify()`).

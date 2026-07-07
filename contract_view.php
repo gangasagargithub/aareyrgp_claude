@@ -1,0 +1,384 @@
+<?php
+require_once __DIR__ . '/includes/auth.php';
+requireLogin();
+
+$pdo = getConnection();
+$contractId = (int)($_GET['id'] ?? 0);
+$message = '';
+
+$stmt = $pdo->prepare(
+    "SELECT ct.*, c.customer_name, c.customer_code FROM contracts ct
+     JOIN customers c ON c.id = ct.customer_id WHERE ct.id = :id"
+);
+$stmt->execute(['id' => $contractId]);
+$contract = $stmt->fetch();
+
+if (!$contract) {
+    header('Location: contracts.php');
+    exit;
+}
+
+$billingAddresses = $pdo->prepare('SELECT id, address_code, address_description FROM customer_billing_addresses WHERE customer_id = :id');
+$billingAddresses->execute(['id' => $contract['customer_id']]);
+$billingAddresses = $billingAddresses->fetchAll();
+
+// Add operator (Principal's contract(s) with Operator(s))
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_operator') {
+    $stmt = $pdo->prepare(
+        "INSERT INTO contract_operators (contract_id, operator, contract_no, project_name, project_abbreviation, billing_address_id)
+         VALUES (:cid, :op, :no, :pname, :pabbr, :baddr)"
+    );
+    $stmt->execute([
+        'cid' => $contractId, 'op' => $_POST['operator'], 'no' => $_POST['contract_no'],
+        'pname' => $_POST['project_name'], 'pabbr' => $_POST['project_abbreviation'],
+        'baddr' => $_POST['billing_address_id'] ?: null,
+    ]);
+    logAction($_SESSION['user_id'], 'contract.operator_add', "Added operator to contract #$contractId");
+    header("Location: contract_view.php?id=$contractId");
+    exit;
+}
+
+// Add rate group + rate rows (Rate Structure)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_rate_group') {
+    $stmt = $pdo->prepare(
+        "INSERT INTO contract_rate_groups
+            (contract_id, contract_clause_no, rate_for, effective_date, service_tax_applicable,
+             statutory_charges_applicable, estimated_quantity, disbursement_currency, remarks,
+             printing_remarks, printing_remarks2, chargeability_options)
+         VALUES
+            (:cid, :clause, :rate_for, :eff, :stax, :stat, :qty, :curr, :remarks, :pr1, :pr2, :chg)"
+    );
+    $stmt->execute([
+        'cid' => $contractId, 'clause' => $_POST['contract_clause_no'] ?: null, 'rate_for' => $_POST['rate_for'],
+        'eff' => $_POST['effective_date'] ?: null, 'stax' => $_POST['service_tax_applicable'] ?? 'yes',
+        'stat' => $_POST['statutory_charges_applicable'] ?? 'yes', 'qty' => $_POST['estimated_quantity'] ?: null,
+        'curr' => $_POST['disbursement_currency'] ?: 'INR', 'remarks' => $_POST['remarks'] ?: null,
+        'pr1' => $_POST['printing_remarks'] ?: null, 'pr2' => $_POST['printing_remarks2'] ?: null,
+        'chg' => $_POST['chargeability_options'] ?: null,
+    ]);
+    $rateGroupId = (int)$pdo->lastInsertId();
+
+    $locations = $_POST['loc_location'] ?? [];
+    foreach ($locations as $i => $loc) {
+        if ($loc === '') continue;
+        $item = $pdo->prepare(
+            "INSERT INTO contract_rate_items (rate_group_id, location, per_unit, priority, mod_type, rate)
+             VALUES (:rg, :loc, :per, :prio, :mod, :rate)"
+        );
+        $item->execute([
+            'rg' => $rateGroupId, 'loc' => $loc,
+            'per' => $_POST['loc_per'][$i], 'prio' => $_POST['loc_priority'][$i],
+            'mod' => $_POST['loc_mod'][$i], 'rate' => $_POST['loc_rate'][$i],
+        ]);
+    }
+
+    logAction($_SESSION['user_id'], 'contract.rate_add', "Added rate group to contract #$contractId");
+    header("Location: contract_view.php?id=$contractId");
+    exit;
+}
+
+// Upload signed contract attachment
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_attachment') {
+    if (!empty($_FILES['attachment']['name'])) {
+        $uploadDir = __DIR__ . '/uploads/contracts/' . $contractId . '/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+        $safeName = time() . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $_FILES['attachment']['name']);
+        $destPath = $uploadDir . $safeName;
+
+        if (move_uploaded_file($_FILES['attachment']['tmp_name'], $destPath)) {
+            $relativePath = 'uploads/contracts/' . $contractId . '/' . $safeName;
+            $stmt = $pdo->prepare(
+                'INSERT INTO contract_attachments (contract_id, description, file_path) VALUES (:cid, :desc, :path)'
+            );
+            $stmt->execute(['cid' => $contractId, 'desc' => $_POST['description'] ?: 'Signed Contract', 'path' => $relativePath]);
+            $pdo->prepare('UPDATE contracts SET signed_contract_path = :path WHERE id = :id')
+                ->execute(['path' => $relativePath, 'id' => $contractId]);
+            logAction($_SESSION['user_id'], 'contract.attachment_upload', "Uploaded attachment to contract #$contractId");
+        } else {
+            $message = 'File upload failed.';
+        }
+    }
+    header("Location: contract_view.php?id=$contractId");
+    exit;
+}
+
+// Finalize contract (select start/end date, convert to contract)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'finalize') {
+    $stmt = $pdo->prepare(
+        "UPDATE contracts SET status = 'finalised', start_date = :start, end_date = :end WHERE id = :id"
+    );
+    $stmt->execute(['start' => $_POST['start_date'], 'end' => $_POST['end_date'], 'id' => $contractId]);
+    logAction($_SESSION['user_id'], 'contract.finalize', "Finalised contract #$contractId (converted to contract)");
+    header("Location: contract_view.php?id=$contractId");
+    exit;
+}
+
+$operators = $pdo->prepare(
+    "SELECT co.*, cb.address_code FROM contract_operators co
+     LEFT JOIN customer_billing_addresses cb ON cb.id = co.billing_address_id
+     WHERE co.contract_id = :id"
+);
+$operators->execute(['id' => $contractId]);
+$operators = $operators->fetchAll();
+
+$rateGroups = $pdo->prepare('SELECT * FROM contract_rate_groups WHERE contract_id = :id ORDER BY id');
+$rateGroups->execute(['id' => $contractId]);
+$rateGroups = $rateGroups->fetchAll();
+
+foreach ($rateGroups as &$rg) {
+    $items = $pdo->prepare('SELECT * FROM contract_rate_items WHERE rate_group_id = :id');
+    $items->execute(['id' => $rg['id']]);
+    $rg['items'] = $items->fetchAll();
+}
+unset($rg);
+
+$attachments = $pdo->prepare('SELECT * FROM contract_attachments WHERE contract_id = :id ORDER BY id DESC');
+$attachments->execute(['id' => $contractId]);
+$attachments = $attachments->fetchAll();
+
+$statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract['status'] === 'reject' ? 'suspended' : 'inactive');
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Offer #<?= $contractId ?> — RBAC Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <?php require __DIR__ . '/includes/sidebar.php'; ?>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="breadcrumb"><a href="contracts.php">Offers &amp; Contracts</a> &middot; <strong>#<?= $contractId ?></strong> &middot; <?= htmlspecialchars($contract['customer_name']) ?></div>
+      <span class="badge <?= $statusBadgeClass ?>" style="font-size:13px; padding:6px 14px;"><?= htmlspecialchars($contract['status']) ?></span>
+    </div>
+
+    <?php if ($message): ?><div class="error-box"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+
+    <div class="grid grid-4" style="margin-bottom:20px;">
+      <div class="card"><div class="card-title">Contract Type</div><div style="font-size:15px; font-weight:600;"><?= htmlspecialchars($contract['contract_type'] ?? '—') ?></div></div>
+      <div class="card"><div class="card-title">Effective Date</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['effective_date'] ?? '—') ?></div></div>
+      <div class="card"><div class="card-title">Currency</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['currency']) ?></div></div>
+      <div class="card"><div class="card-title">Agency Co-ordinator</div><div style="font-size:15px;"><?= htmlspecialchars($contract['agency_coordinator'] ?? '—') ?></div></div>
+    </div>
+
+    <!-- Operators -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Principal's Contract(s) with Operator(s)</h3>
+        <button type="button" class="btn primary" id="toggleOperatorForm">+ Add Operator</button>
+      </div>
+      <div id="operatorForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
+        <form method="post">
+          <input type="hidden" name="action" value="add_operator">
+          <div class="grid grid-4">
+            <div class="field"><label>Operator *</label><input name="operator" required></div>
+            <div class="field"><label>Contract No *</label><input name="contract_no" required></div>
+            <div class="field"><label>Project Name *</label><input name="project_name" required></div>
+            <div class="field"><label>Project Abbreviation *</label><input name="project_abbreviation" required></div>
+          </div>
+          <div class="field" style="max-width:280px;">
+            <label>Billing Address</label>
+            <select name="billing_address_id">
+              <option value="">-- Select --</option>
+              <?php foreach ($billingAddresses as $b): ?>
+                <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['address_code'] . ' — ' . $b['address_description']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <button type="submit" class="btn primary">Add</button>
+        </form>
+      </div>
+      <div class="table-wrap" style="border:none; margin-top:14px;">
+        <table>
+          <thead><tr><th>Operator</th><th>Contract No</th><th>Project</th><th>Abbr.</th><th>Billing Addr.</th></tr></thead>
+          <tbody>
+            <?php foreach ($operators as $op): ?>
+            <tr>
+              <td><?= htmlspecialchars($op['operator']) ?></td>
+              <td class="mono"><?= htmlspecialchars($op['contract_no']) ?></td>
+              <td><?= htmlspecialchars($op['project_name']) ?></td>
+              <td class="mono"><?= htmlspecialchars($op['project_abbreviation']) ?></td>
+              <td style="color:var(--muted)"><?= htmlspecialchars($op['address_code'] ?? '—') ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (!$operators): ?><tr><td colspan="5" style="color:var(--muted)">No operators added yet.</td></tr><?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Rate Structure -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Rate Structure</h3>
+        <button type="button" class="btn primary" id="toggleRateForm">+ Add Rate Group</button>
+      </div>
+
+      <div id="rateForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
+        <form method="post">
+          <input type="hidden" name="action" value="add_rate_group">
+          <div class="grid grid-4">
+            <div class="field"><label>Contract Clause No.</label><input name="contract_clause_no"></div>
+            <div class="field" style="grid-column: span 2;"><label>Rate For *</label><input name="rate_for" required placeholder="e.g. Rate For MOD Clearance"></div>
+            <div class="field"><label>Effective Date</label><input type="date" name="effective_date"></div>
+          </div>
+          <div class="grid grid-4">
+            <div class="field">
+              <label>Service Tax Applicable</label>
+              <select name="service_tax_applicable"><option value="yes">Yes</option><option value="no">No</option></select>
+            </div>
+            <div class="field">
+              <label>Statutory Charges Applicable</label>
+              <select name="statutory_charges_applicable"><option value="yes">Yes</option><option value="no">No</option></select>
+            </div>
+            <div class="field"><label>Estimated Quantity</label><input type="number" name="estimated_quantity"></div>
+            <div class="field">
+              <label>Disbursement Currency</label>
+              <select name="disbursement_currency"><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Remarks</label><input name="remarks" placeholder="e.g. GST will be payable at actuals"></div>
+          <div class="field"><label>Offer/Contract Printing Remarks</label><input name="printing_remarks"></div>
+          <div class="field"><label>Offer/Contract Printing Remarks 2</label><input name="printing_remarks2"></div>
+          <div class="field" style="max-width:280px;"><label>Chargeability Options</label><input name="chargeability_options" placeholder="AS PER RATE STRUCTURE-CRS"></div>
+
+          <h4 style="margin:18px 0 10px;">Rate Rows</h4>
+          <div id="rateRows">
+            <div class="grid grid-4 rate-row" style="margin-bottom:8px;">
+              <div class="field"><label>Location</label><input name="loc_location[]"></div>
+              <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
+              <div class="field">
+                <label>Priority</label>
+                <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
+              </div>
+              <div class="field">
+                <label>Mod Type</label>
+                <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
+              </div>
+            </div>
+            <div class="field" style="max-width:200px;"><label>Rate</label><input type="number" step="0.01" name="loc_rate[]"></div>
+          </div>
+          <button type="button" class="btn" id="addRateRow" style="margin-bottom:14px;">+ Add Row</button>
+          <br>
+          <button type="submit" class="btn primary">Save Rate Group</button>
+        </form>
+      </div>
+
+      <?php foreach ($rateGroups as $rg): ?>
+        <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
+          <div style="display:flex; justify-content:space-between;">
+            <strong><?= htmlspecialchars($rg['rate_for']) ?></strong>
+            <span class="mono" style="color:var(--muted); font-size:12px;">Clause <?= htmlspecialchars($rg['contract_clause_no'] ?? '—') ?> &middot; Eff. <?= htmlspecialchars($rg['effective_date'] ?? '—') ?></span>
+          </div>
+          <?php if ($rg['remarks']): ?><p style="color:var(--muted); font-size:12.5px; margin:6px 0;"><?= htmlspecialchars($rg['remarks']) ?></p><?php endif; ?>
+          <div class="table-wrap" style="border:none; margin-top:8px;">
+            <table>
+              <thead><tr><th>Location</th><th>Per</th><th>Priority</th><th>Mod Type</th><th>Rate</th></tr></thead>
+              <tbody>
+                <?php foreach ($rg['items'] as $item): ?>
+                <tr>
+                  <td><?= htmlspecialchars($item['location']) ?></td>
+                  <td><?= htmlspecialchars($item['per_unit']) ?></td>
+                  <td><?= htmlspecialchars($item['priority']) ?></td>
+                  <td><?= htmlspecialchars($item['mod_type']) ?></td>
+                  <td class="mono"><?= number_format($item['rate'], 2) ?></td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <?php endforeach; ?>
+      <?php if (!$rateGroups): ?><p style="color:var(--muted); margin-top:14px;">No rate groups added yet.</p><?php endif; ?>
+    </div>
+
+    <!-- Attachments -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3>Attachments</h3>
+      <form method="post" enctype="multipart/form-data" style="margin-top:10px;">
+        <input type="hidden" name="action" value="upload_attachment">
+        <div class="grid grid-4">
+          <div class="field" style="grid-column: span 2;"><label>Description</label><input name="description" placeholder="Signed Contract"></div>
+          <div class="field" style="grid-column: span 2;"><label>File</label><input type="file" name="attachment" required></div>
+        </div>
+        <button type="submit" class="btn primary">Attach</button>
+      </form>
+
+      <div class="table-wrap" style="border:none; margin-top:14px;">
+        <table>
+          <thead><tr><th>Description</th><th>File</th><th>Uploaded</th></tr></thead>
+          <tbody>
+            <?php foreach ($attachments as $att): ?>
+            <tr>
+              <td><?= htmlspecialchars($att['description']) ?></td>
+              <td><a href="<?= htmlspecialchars($att['file_path']) ?>" target="_blank" class="mono"><?= htmlspecialchars(basename($att['file_path'])) ?></a></td>
+              <td class="mono" style="color:var(--muted)"><?= htmlspecialchars($att['uploaded_at']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (!$attachments): ?><tr><td colspan="3" style="color:var(--muted)">No attachments yet.</td></tr><?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Finalize -->
+    <div class="card">
+      <h3>Finalize Offer &rarr; Convert to Contract</h3>
+      <?php if ($contract['status'] === 'finalised'): ?>
+        <p style="color:var(--cyan);">This offer was finalised. Start: <span class="mono"><?= htmlspecialchars($contract['start_date']) ?></span> &middot; End: <span class="mono"><?= htmlspecialchars($contract['end_date']) ?></span></p>
+      <?php else: ?>
+        <p style="color:var(--muted); font-size:12.5px;">Set the effective start and end dates, then finalize to convert this draft offer into an active contract.</p>
+        <form method="post">
+          <input type="hidden" name="action" value="finalize">
+          <div class="grid grid-4">
+            <div class="field"><label>Start Date (Effective Date) *</label><input type="date" name="start_date" required></div>
+            <div class="field"><label>End Date *</label><input type="date" name="end_date" required></div>
+          </div>
+          <button type="submit" class="btn primary" onclick="return confirm('Finalize this offer and convert it to a contract? This cannot be undone.');">Finalize &amp; Convert to Contract</button>
+        </form>
+      <?php endif; ?>
+    </div>
+  </main>
+</div>
+
+<script>
+  document.getElementById('toggleOperatorForm').addEventListener('click', function () {
+    var f = document.getElementById('operatorForm');
+    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+  });
+  document.getElementById('toggleRateForm').addEventListener('click', function () {
+    var f = document.getElementById('rateForm');
+    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+  });
+  document.getElementById('addRateRow').addEventListener('click', function () {
+    var rows = document.getElementById('rateRows');
+    var row = document.createElement('div');
+    row.className = 'grid grid-4 rate-row';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `
+      <div class="field"><label>Location</label><input name="loc_location[]"></div>
+      <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
+      <div class="field"><label>Priority</label>
+        <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
+      </div>
+      <div class="field"><label>Mod Type</label>
+        <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
+      </div>`;
+    rows.appendChild(row);
+    var rateField = document.createElement('div');
+    rateField.className = 'field';
+    rateField.style.maxWidth = '200px';
+    rateField.innerHTML = '<label>Rate</label><input type="number" step="0.01" name="loc_rate[]">';
+    rows.appendChild(rateField);
+  });
+</script>
+</body>
+</html>
