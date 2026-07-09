@@ -7,15 +7,19 @@ $message = '';
 $newForCustomer = (int)($_GET['new_for'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_contract') {
+    $pdo->beginTransaction();
+    $contractNumber = generateContractNumber($pdo);
+
     $stmt = $pdo->prepare(
         "INSERT INTO contracts
-            (customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
+            (contract_number, customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
              bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency)
          VALUES
-            (:cid, :agency, :eff_date, :ctype, :bid_ref, :bid_ref_date,
+            (:cnum, :cid, :agency, :eff_date, :ctype, :bid_ref, :bid_ref_date,
              :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency)"
     );
     $stmt->execute([
+        'cnum' => $contractNumber,
         'cid' => (int)$_POST['customer_id'],
         'agency' => $_POST['agency_coordinator'] ?: null,
         'eff_date' => $_POST['effective_date'] ?: null,
@@ -30,7 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         'currency' => $_POST['currency'] ?: 'INR',
     ]);
     $contractId = (int)$pdo->lastInsertId();
-    logAction($_SESSION['user_id'], 'contract.create', "Created offer #$contractId");
+    $pdo->commit();
+
+    logAction($_SESSION['user_id'], 'contract.create', "Created offer #$contractId ($contractNumber)");
     header("Location: contract_view.php?id=$contractId");
     exit;
 }
@@ -124,12 +130,13 @@ $contracts = $pdo->query(
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>Customer</th><th>Type</th><th>Effective Date</th><th>Status</th><th></th></tr>
+          <tr><th>#</th><th>Contract No.</th><th>Customer</th><th>Type</th><th>Effective Date</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           <?php foreach ($contracts as $ct): ?>
           <tr>
             <td class="mono">#<?= $ct['id'] ?></td>
+            <td class="mono" style="color:var(--cyan)"><?= htmlspecialchars($ct['contract_number'] ?? '—') ?></td>
             <td><?= htmlspecialchars($ct['customer_name']) ?></td>
             <td style="color:var(--muted)"><?= htmlspecialchars($ct['contract_type'] ?? '—') ?></td>
             <td class="mono" style="color:var(--muted)"><?= htmlspecialchars($ct['effective_date'] ?? '—') ?></td>
@@ -138,7 +145,7 @@ $contracts = $pdo->query(
           </tr>
           <?php endforeach; ?>
           <?php if (!$contracts): ?>
-          <tr><td colspan="6" style="color:var(--muted)">No offers/contracts yet.</td></tr>
+          <tr><td colspan="7" style="color:var(--muted)">No offers/contracts yet.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>

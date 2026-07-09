@@ -99,3 +99,22 @@ function isSuperAdmin(): bool
 {
     return in_array('Super Admin', $_SESSION['roles'] ?? [], true);
 }
+
+/**
+ * Generates the next contract number in the ARYACONT01, ARYACONT02, ... series.
+ * Looks at the highest existing numeric suffix rather than a row count, so
+ * gaps from any future deletions don't cause a collision or reuse a number.
+ */
+function generateContractNumber(PDO $pdo): string
+{
+    $stmt = $pdo->query(
+        "SELECT contract_number FROM contracts
+         WHERE contract_number REGEXP '^ARYACONT[0-9]+$'
+         ORDER BY CAST(SUBSTRING(contract_number, 9) AS UNSIGNED) DESC
+         LIMIT 1"
+    );
+    $last = $stmt->fetchColumn();
+    $nextNum = $last ? ((int)substr($last, 8) + 1) : 1;
+
+    return 'ARYACONT' . str_pad((string)$nextNum, 2, '0', STR_PAD_LEFT);
+}

@@ -156,16 +156,19 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
 
   <main class="main">
     <div class="topbar">
-      <div class="breadcrumb"><a href="contracts.php">Offers &amp; Contracts</a> &middot; <strong>#<?= $contractId ?></strong> &middot; <?= htmlspecialchars($contract['customer_name']) ?></div>
+      <div class="breadcrumb"><a href="contracts.php">Offers &amp; Contracts</a> &middot; <strong><?= htmlspecialchars($contract['contract_number'] ?? ('#' . $contractId)) ?></strong> &middot; <?= htmlspecialchars($contract['customer_name']) ?></div>
       <span class="badge <?= $statusBadgeClass ?>" style="font-size:13px; padding:6px 14px;"><?= htmlspecialchars($contract['status']) ?></span>
     </div>
 
     <?php if ($message): ?><div class="error-box"><?= htmlspecialchars($message) ?></div><?php endif; ?>
 
     <div class="grid grid-4" style="margin-bottom:20px;">
+      <div class="card"><div class="card-title">Contract Number</div><div class="mono" style="font-size:18px; color:var(--cyan);"><?= htmlspecialchars($contract['contract_number'] ?? '—') ?></div></div>
       <div class="card"><div class="card-title">Contract Type</div><div style="font-size:15px; font-weight:600;"><?= htmlspecialchars($contract['contract_type'] ?? '—') ?></div></div>
       <div class="card"><div class="card-title">Effective Date</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['effective_date'] ?? '—') ?></div></div>
       <div class="card"><div class="card-title">Currency</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['currency']) ?></div></div>
+    </div>
+    <div class="grid grid-4" style="margin-bottom:20px;">
       <div class="card"><div class="card-title">Agency Co-ordinator</div><div style="font-size:15px;"><?= htmlspecialchars($contract['agency_coordinator'] ?? '—') ?></div></div>
     </div>
 

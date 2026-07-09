@@ -10,6 +10,25 @@
  * POST /api/contracts/{id}/attachments      -> attach a file (multipart/form-data)
  */
 
+/**
+ * Generates the next contract number in the ARYACONT01, ARYACONT02, ... series.
+ * Looks at the highest existing numeric suffix rather than a row count, so
+ * gaps from any future deletions don't cause a collision or reuse a number.
+ */
+function generateContractNumber(PDO $pdo): string
+{
+    $stmt = $pdo->query(
+        "SELECT contract_number FROM contracts
+         WHERE contract_number REGEXP '^ARYACONT[0-9]+$'
+         ORDER BY CAST(SUBSTRING(contract_number, 9) AS UNSIGNED) DESC
+         LIMIT 1"
+    );
+    $last = $stmt->fetchColumn();
+    $nextNum = $last ? ((int)substr($last, 8) + 1) : 1;
+
+    return 'ARYACONT' . str_pad((string)$nextNum, 2, '0', STR_PAD_LEFT);
+}
+
 function handleContractsList(PDO $pdo): void
 {
     $rows = $pdo->query(
@@ -27,14 +46,18 @@ function handleContractCreate(PDO $pdo, int $apiKeyId): void
 
     ensureCustomerExists($pdo, (int)$body['customer_id']);
 
+    $pdo->beginTransaction();
+    $contractNumber = generateContractNumber($pdo);
+
     $stmt = $pdo->prepare(
         "INSERT INTO contracts
-            (customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
+            (contract_number, customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
              bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency)
          VALUES
-            (:cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency)"
+            (:cnum, :cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency)"
     );
     $stmt->execute([
+        'cnum' => $contractNumber,
         'cid' => (int)$body['customer_id'],
         'agency' => $body['agency_coordinator'] ?? null,
         'eff' => $body['effective_date'],
@@ -49,7 +72,9 @@ function handleContractCreate(PDO $pdo, int $apiKeyId): void
         'currency' => $body['currency'] ?? 'INR',
     ]);
     $contractId = (int)$pdo->lastInsertId();
-    logApiAction($apiKeyId, 'api.contract.create', "Created offer #$contractId");
+    $pdo->commit();
+
+    logApiAction($apiKeyId, 'api.contract.create', "Created offer #$contractId ($contractNumber)");
 
     jsonSuccess(fetchFullContract($pdo, $contractId), 201);
 }

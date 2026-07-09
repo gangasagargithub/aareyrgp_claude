@@ -261,11 +261,11 @@ $contracts = $contracts->fetchAll();
       <h3>Offers &amp; Contracts</h3>
       <div class="table-wrap" style="border:none;">
         <table>
-          <thead><tr><th>#</th><th>Type</th><th>Effective Date</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Contract No.</th><th>Type</th><th>Effective Date</th><th>Status</th><th></th></tr></thead>
           <tbody>
             <?php foreach ($contracts as $ct): ?>
             <tr>
-              <td class="mono">#<?= $ct['id'] ?></td>
+              <td class="mono" style="color:var(--cyan)"><?= htmlspecialchars($ct['contract_number'] ?? ('#' . $ct['id'])) ?></td>
               <td><?= htmlspecialchars($ct['contract_type'] ?? '—') ?></td>
               <td class="mono" style="color:var(--muted)"><?= htmlspecialchars($ct['effective_date'] ?? '—') ?></td>
               <td><span class="badge <?= $ct['status'] === 'finalised' ? 'active' : ($ct['status'] === 'reject' ? 'suspended' : 'inactive') ?>"><?= htmlspecialchars($ct['status']) ?></span></td>
