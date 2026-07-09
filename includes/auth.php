@@ -93,3 +93,9 @@ function logoutUser(): void
     $_SESSION = [];
     session_destroy();
 }
+
+/** True if the currently logged-in user holds the Super Admin role. */
+function isSuperAdmin(): bool
+{
+    return in_array('Super Admin', $_SESSION['roles'] ?? [], true);
+}
