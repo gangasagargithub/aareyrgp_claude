@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $last  = trim($_POST['last_name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $pass  = $_POST['password'] ?? '';
-    $roleId = (int)($_POST['role_id'] ?? 0);
+    $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
 
     if ($first && $last && $email && $pass) {
         $hash = password_hash($pass, PASSWORD_BCRYPT);
@@ -21,9 +21,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $stmt->execute(['f' => $first, 'l' => $last, 'e' => $email, 'p' => $hash]);
         $newId = (int)$pdo->lastInsertId();
 
-        if ($roleId) {
-            $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
-                ->execute(['u' => $newId, 'r' => $roleId]);
+        foreach (array_unique($roleIds) as $roleId) {
+            if ($roleId) {
+                $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
+                    ->execute(['u' => $newId, 'r' => $roleId]);
+            }
         }
 
         logAction($_SESSION['user_id'], 'user.create', "Created user #$newId ($email)");
@@ -56,12 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     if (!isSuperAdmin()) {
         $message = 'Only Super Admin can modify user info.';
     } else {
-        $id     = (int)($_POST['user_id'] ?? 0);
-        $first  = trim($_POST['first_name'] ?? '');
-        $last   = trim($_POST['last_name'] ?? '');
-        $email  = trim($_POST['email'] ?? '');
-        $phone  = trim($_POST['phone'] ?? '');
-        $roleId = (int)($_POST['role_id'] ?? 0);
+        $id      = (int)($_POST['user_id'] ?? 0);
+        $first   = trim($_POST['first_name'] ?? '');
+        $last    = trim($_POST['last_name'] ?? '');
+        $email   = trim($_POST['email'] ?? '');
+        $phone   = trim($_POST['phone'] ?? '');
+        $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
 
         if ($id && $first && $last && $email) {
             $stmt = $pdo->prepare(
@@ -72,10 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                 'p' => $phone !== '' ? $phone : null, 'id' => $id,
             ]);
 
-            if ($roleId) {
-                $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $id]);
-                $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
-                    ->execute(['u' => $id, 'r' => $roleId]);
+            $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $id]);
+            foreach (array_unique($roleIds) as $roleId) {
+                if ($roleId) {
+                    $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
+                        ->execute(['u' => $id, 'r' => $roleId]);
+                }
             }
 
             logAction($_SESSION['user_id'], 'user.update', "Updated info for user #$id ($email)");
@@ -119,13 +123,18 @@ $roles = $pdo->query('SELECT id, name FROM roles ORDER BY name')->fetchAll();
 $users = $pdo->query(
     "SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.status, u.last_login,
             GROUP_CONCAT(r.name SEPARATOR ', ') AS role_names,
-            MIN(ur.role_id) AS current_role_id
+            GROUP_CONCAT(ur.role_id SEPARATOR ',') AS role_id_list
      FROM users u
      LEFT JOIN user_roles ur ON ur.user_id = u.id
      LEFT JOIN roles r ON r.id = ur.role_id
      GROUP BY u.id
      ORDER BY u.id"
 )->fetchAll();
+
+foreach ($users as &$u) {
+    $u['role_ids'] = $u['role_id_list'] ? array_map('intval', explode(',', $u['role_id_list'])) : [];
+}
+unset($u);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -159,13 +168,15 @@ $users = $pdo->query(
           <div class="field"><label>Email</label><input type="email" name="email" required></div>
           <div class="field"><label>Password</label><input type="password" name="password" required></div>
         </div>
-        <div class="field" style="max-width:240px;">
-          <label>Role</label>
-          <select name="role_id">
+        <div class="field">
+          <label>Roles (select one or more)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; padding:8px 0;">
             <?php foreach ($roles as $r): ?>
-              <option value="<?= $r['id'] ?>"><?= htmlspecialchars($r['name']) ?></option>
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); font-weight:400;">
+                <input type="checkbox" name="role_ids[]" value="<?= $r['id'] ?>" style="width:auto;"> <?= htmlspecialchars($r['name']) ?>
+              </label>
             <?php endforeach; ?>
-          </select>
+          </div>
         </div>
         <button type="submit" class="btn primary">Save user</button>
       </form>
@@ -211,13 +222,15 @@ $users = $pdo->query(
                   <div class="field"><label>Email</label><input type="email" name="email" value="<?= htmlspecialchars($u['email']) ?>" required></div>
                   <div class="field"><label>Phone</label><input name="phone" value="<?= htmlspecialchars($u['phone'] ?? '') ?>"></div>
                 </div>
-                <div class="field" style="max-width:240px;">
-                  <label>Role</label>
-                  <select name="role_id">
+                <div class="field">
+                  <label>Roles (select one or more)</label>
+                  <div style="display:flex; flex-wrap:wrap; gap:14px; padding:8px 0;">
                     <?php foreach ($roles as $r): ?>
-                      <option value="<?= $r['id'] ?>" <?= $r['id'] == $u['current_role_id'] ? 'selected' : '' ?>><?= htmlspecialchars($r['name']) ?></option>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); font-weight:400;">
+                        <input type="checkbox" name="role_ids[]" value="<?= $r['id'] ?>" style="width:auto;" <?= in_array($r['id'], $u['role_ids'], true) ? 'checked' : '' ?>> <?= htmlspecialchars($r['name']) ?>
+                      </label>
                     <?php endforeach; ?>
-                  </select>
+                  </div>
                 </div>
                 <button type="submit" class="btn primary">Save Changes</button>
               </form>
