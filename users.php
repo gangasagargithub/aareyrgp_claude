@@ -51,6 +51,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reset
     }
 }
 
+// Handle user info update (Super Admin only)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_user') {
+    if (!isSuperAdmin()) {
+        $message = 'Only Super Admin can modify user info.';
+    } else {
+        $id     = (int)($_POST['user_id'] ?? 0);
+        $first  = trim($_POST['first_name'] ?? '');
+        $last   = trim($_POST['last_name'] ?? '');
+        $email  = trim($_POST['email'] ?? '');
+        $phone  = trim($_POST['phone'] ?? '');
+        $roleId = (int)($_POST['role_id'] ?? 0);
+
+        if ($id && $first && $last && $email) {
+            $stmt = $pdo->prepare(
+                'UPDATE users SET first_name = :f, last_name = :l, email = :e, phone = :p WHERE id = :id'
+            );
+            $stmt->execute([
+                'f' => $first, 'l' => $last, 'e' => $email,
+                'p' => $phone !== '' ? $phone : null, 'id' => $id,
+            ]);
+
+            if ($roleId) {
+                $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $id]);
+                $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
+                    ->execute(['u' => $id, 'r' => $roleId]);
+            }
+
+            logAction($_SESSION['user_id'], 'user.update', "Updated info for user #$id ($email)");
+            $message = 'User info updated.';
+        } else {
+            $message = 'First name, last name, and email are required.';
+        }
+    }
+}
+
 // Handle status toggle (active <-> inactive)
 if (isset($_GET['toggle_status'])) {
     $id = (int)$_GET['toggle_status'];
@@ -82,8 +117,9 @@ if (isset($_GET['delete'])) {
 $roles = $pdo->query('SELECT id, name FROM roles ORDER BY name')->fetchAll();
 
 $users = $pdo->query(
-    "SELECT u.id, u.first_name, u.last_name, u.email, u.status, u.last_login,
-            GROUP_CONCAT(r.name SEPARATOR ', ') AS role_names
+    "SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.status, u.last_login,
+            GROUP_CONCAT(r.name SEPARATOR ', ') AS role_names,
+            MIN(ur.role_id) AS current_role_id
      FROM users u
      LEFT JOIN user_roles ur ON ur.user_id = u.id
      LEFT JOIN roles r ON r.id = ur.role_id
@@ -155,6 +191,7 @@ $users = $pdo->query(
                 <?= $u['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
               </a>
               <?php if (isSuperAdmin()): ?>
+              <a href="#" class="edit-user-toggle" data-id="<?= $u['id'] ?>" style="color:var(--text); margin-right:14px;">Edit</a>
               <a href="#" class="reset-pw-toggle" data-id="<?= $u['id'] ?>" style="color:var(--cyan); margin-right:14px;">Reset Password</a>
               <?php endif; ?>
               <a href="users.php?delete=<?= $u['id'] ?>"
@@ -162,6 +199,31 @@ $users = $pdo->query(
                  style="color:var(--red);">Delete</a>
             </td>
           </tr>
+          <?php if (isSuperAdmin()): ?>
+          <tr id="edit-user-row-<?= $u['id'] ?>" style="display:none;">
+            <td colspan="6" style="background:var(--panel-alt);">
+              <form method="post" style="padding:14px 0;">
+                <input type="hidden" name="action" value="update_user">
+                <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
+                <div class="grid grid-4">
+                  <div class="field"><label>First name</label><input name="first_name" value="<?= htmlspecialchars($u['first_name']) ?>" required></div>
+                  <div class="field"><label>Last name</label><input name="last_name" value="<?= htmlspecialchars($u['last_name']) ?>" required></div>
+                  <div class="field"><label>Email</label><input type="email" name="email" value="<?= htmlspecialchars($u['email']) ?>" required></div>
+                  <div class="field"><label>Phone</label><input name="phone" value="<?= htmlspecialchars($u['phone'] ?? '') ?>"></div>
+                </div>
+                <div class="field" style="max-width:240px;">
+                  <label>Role</label>
+                  <select name="role_id">
+                    <?php foreach ($roles as $r): ?>
+                      <option value="<?= $r['id'] ?>" <?= $r['id'] == $u['current_role_id'] ? 'selected' : '' ?>><?= htmlspecialchars($r['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <button type="submit" class="btn primary">Save Changes</button>
+              </form>
+            </td>
+          </tr>
+          <?php endif; ?>
           <?php if (isSuperAdmin()): ?>
           <tr id="reset-pw-row-<?= $u['id'] ?>" style="display:none;">
             <td colspan="6" style="background:var(--panel-alt);">
@@ -194,6 +256,14 @@ $users = $pdo->query(
     link.addEventListener('click', function (e) {
       e.preventDefault();
       var row = document.getElementById('reset-pw-row-' + this.dataset.id);
+      row.style.display = (row.style.display === 'none' || !row.style.display) ? 'table-row' : 'none';
+    });
+  });
+
+  document.querySelectorAll('.edit-user-toggle').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      var row = document.getElementById('edit-user-row-' + this.dataset.id);
       row.style.display = (row.style.display === 'none' || !row.style.display) ? 'table-row' : 'none';
     });
   });
