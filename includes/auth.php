@@ -100,6 +100,13 @@ function isSuperAdmin(): bool
     return in_array('Super Admin', $_SESSION['roles'] ?? [], true);
 }
 
+/** True if the currently logged-in user holds Super Admin or Admin. */
+function isAdminOrSuperAdmin(): bool
+{
+    $roles = $_SESSION['roles'] ?? [];
+    return in_array('Super Admin', $roles, true) || in_array('Admin', $roles, true);
+}
+
 /**
  * Generates the next contract number in the ARYACONT01, ARYACONT02, ... series.
  * Looks at the highest existing numeric suffix rather than a row count, so

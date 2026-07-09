@@ -22,8 +22,19 @@ $billingAddresses = $pdo->prepare('SELECT id, address_code, address_description 
 $billingAddresses->execute(['id' => $contract['customer_id']]);
 $billingAddresses = $billingAddresses->fetchAll();
 
+// Every write action on this page (add operator, add rate group, upload attachment,
+// finalize) modifies a drafted contract or finalises it — restrict to Admin/Super Admin.
+$modifyActions = ['add_operator', 'add_rate_group', 'upload_attachment', 'finalize'];
+$requestedAction = $_POST['action'] ?? '';
+$isModifyRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && in_array($requestedAction, $modifyActions, true);
+$canModify = !$isModifyRequest || isAdminOrSuperAdmin();
+
+if ($isModifyRequest && !$canModify) {
+    $message = 'Only Admin or Super Admin can modify a drafted contract or finalize it.';
+}
+
 // Add operator (Principal's contract(s) with Operator(s))
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_operator') {
+if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_operator') {
     $stmt = $pdo->prepare(
         "INSERT INTO contract_operators (contract_id, operator, contract_no, project_name, project_abbreviation, billing_address_id)
          VALUES (:cid, :op, :no, :pname, :pabbr, :baddr)"
@@ -39,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_o
 }
 
 // Add rate group + rate rows (Rate Structure)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_rate_group') {
+if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_rate_group') {
     $stmt = $pdo->prepare(
         "INSERT INTO contract_rate_groups
             (contract_id, contract_clause_no, rate_for, effective_date, service_tax_applicable,
@@ -78,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_r
 }
 
 // Upload signed contract attachment
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_attachment') {
+if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_attachment') {
     if (!empty($_FILES['attachment']['name'])) {
         $uploadDir = __DIR__ . '/uploads/contracts/' . $contractId . '/';
         if (!is_dir($uploadDir)) {
@@ -105,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 }
 
 // Finalize contract (select start/end date, convert to contract)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'finalize') {
+if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'finalize') {
     $stmt = $pdo->prepare(
         "UPDATE contracts SET status = 'finalised', start_date = :start, end_date = :end WHERE id = :id"
     );
@@ -176,8 +187,11 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3>Principal's Contract(s) with Operator(s)</h3>
+        <?php if (isAdminOrSuperAdmin()): ?>
         <button type="button" class="btn primary" id="toggleOperatorForm">+ Add Operator</button>
+        <?php endif; ?>
       </div>
+      <?php if (isAdminOrSuperAdmin()): ?>
       <div id="operatorForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
         <form method="post">
           <input type="hidden" name="action" value="add_operator">
@@ -199,6 +213,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           <button type="submit" class="btn primary">Add</button>
         </form>
       </div>
+      <?php endif; ?>
       <div class="table-wrap" style="border:none; margin-top:14px;">
         <table>
           <thead><tr><th>Operator</th><th>Contract No</th><th>Project</th><th>Abbr.</th><th>Billing Addr.</th></tr></thead>
@@ -222,9 +237,12 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3>Rate Structure</h3>
+        <?php if (isAdminOrSuperAdmin()): ?>
         <button type="button" class="btn primary" id="toggleRateForm">+ Add Rate Group</button>
+        <?php endif; ?>
       </div>
 
+      <?php if (isAdminOrSuperAdmin()): ?>
       <div id="rateForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
         <form method="post">
           <input type="hidden" name="action" value="add_rate_group">
@@ -274,6 +292,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           <button type="submit" class="btn primary">Save Rate Group</button>
         </form>
       </div>
+      <?php endif; ?>
 
       <?php foreach ($rateGroups as $rg): ?>
         <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
@@ -306,6 +325,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     <!-- Attachments -->
     <div class="card" style="margin-bottom:20px;">
       <h3>Attachments</h3>
+      <?php if (isAdminOrSuperAdmin()): ?>
       <form method="post" enctype="multipart/form-data" style="margin-top:10px;">
         <input type="hidden" name="action" value="upload_attachment">
         <div class="grid grid-4">
@@ -314,6 +334,9 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
         </div>
         <button type="submit" class="btn primary">Attach</button>
       </form>
+      <?php else: ?>
+      <p style="color:var(--muted); font-size:12.5px; margin-top:10px;">Only Admin or Super Admin can attach files to this contract.</p>
+      <?php endif; ?>
 
       <div class="table-wrap" style="border:none; margin-top:14px;">
         <table>
@@ -337,7 +360,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
       <h3>Finalize Offer &rarr; Convert to Contract</h3>
       <?php if ($contract['status'] === 'finalised'): ?>
         <p style="color:var(--cyan);">This offer was finalised. Start: <span class="mono"><?= htmlspecialchars($contract['start_date']) ?></span> &middot; End: <span class="mono"><?= htmlspecialchars($contract['end_date']) ?></span></p>
-      <?php else: ?>
+      <?php elseif (isAdminOrSuperAdmin()): ?>
         <p style="color:var(--muted); font-size:12.5px;">Set the effective start and end dates, then finalize to convert this draft offer into an active contract.</p>
         <form method="post">
           <input type="hidden" name="action" value="finalize">
@@ -347,41 +370,54 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           </div>
           <button type="submit" class="btn primary" onclick="return confirm('Finalize this offer and convert it to a contract? This cannot be undone.');">Finalize &amp; Convert to Contract</button>
         </form>
+      <?php else: ?>
+        <p style="color:var(--muted); font-size:12.5px;">This offer is still in draft. Only Admin or Super Admin can finalize it.</p>
       <?php endif; ?>
     </div>
   </main>
 </div>
 
 <script>
-  document.getElementById('toggleOperatorForm').addEventListener('click', function () {
-    var f = document.getElementById('operatorForm');
-    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
-  });
-  document.getElementById('toggleRateForm').addEventListener('click', function () {
-    var f = document.getElementById('rateForm');
-    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
-  });
-  document.getElementById('addRateRow').addEventListener('click', function () {
-    var rows = document.getElementById('rateRows');
-    var row = document.createElement('div');
-    row.className = 'grid grid-4 rate-row';
-    row.style.marginBottom = '8px';
-    row.innerHTML = `
-      <div class="field"><label>Location</label><input name="loc_location[]"></div>
-      <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
-      <div class="field"><label>Priority</label>
-        <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
-      </div>
-      <div class="field"><label>Mod Type</label>
-        <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
-      </div>`;
-    rows.appendChild(row);
-    var rateField = document.createElement('div');
-    rateField.className = 'field';
-    rateField.style.maxWidth = '200px';
-    rateField.innerHTML = '<label>Rate</label><input type="number" step="0.01" name="loc_rate[]">';
-    rows.appendChild(rateField);
-  });
+  var toggleOperatorBtn = document.getElementById('toggleOperatorForm');
+  if (toggleOperatorBtn) {
+    toggleOperatorBtn.addEventListener('click', function () {
+      var f = document.getElementById('operatorForm');
+      f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    });
+  }
+
+  var toggleRateBtn = document.getElementById('toggleRateForm');
+  if (toggleRateBtn) {
+    toggleRateBtn.addEventListener('click', function () {
+      var f = document.getElementById('rateForm');
+      f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    });
+  }
+
+  var addRateRowBtn = document.getElementById('addRateRow');
+  if (addRateRowBtn) {
+    addRateRowBtn.addEventListener('click', function () {
+      var rows = document.getElementById('rateRows');
+      var row = document.createElement('div');
+      row.className = 'grid grid-4 rate-row';
+      row.style.marginBottom = '8px';
+      row.innerHTML = `
+        <div class="field"><label>Location</label><input name="loc_location[]"></div>
+        <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
+        <div class="field"><label>Priority</label>
+          <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
+        </div>
+        <div class="field"><label>Mod Type</label>
+          <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
+        </div>`;
+      rows.appendChild(row);
+      var rateField = document.createElement('div');
+      rateField.className = 'field';
+      rateField.style.maxWidth = '200px';
+      rateField.innerHTML = '<label>Rate</label><input type="number" step="0.01" name="loc_rate[]">';
+      rows.appendChild(rateField);
+    });
+  }
 </script>
 </body>
 </html>

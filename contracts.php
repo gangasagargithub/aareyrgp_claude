@@ -43,6 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 
 $customers = $pdo->query("SELECT id, customer_name, customer_code FROM customers ORDER BY customer_name")->fetchAll();
 
+$agencyCoordinators = $pdo->query(
+    "SELECT u.id, u.first_name, u.last_name FROM users u
+     JOIN user_roles ur ON ur.user_id = u.id
+     JOIN roles r ON r.id = ur.role_id
+     WHERE r.name = 'Agency Co-ordinator' AND u.status = 'active'
+     ORDER BY u.first_name"
+)->fetchAll();
+
 $contracts = $pdo->query(
     "SELECT ct.*, c.customer_name, c.customer_code
      FROM contracts ct JOIN customers c ON c.id = ct.customer_id
@@ -98,7 +106,20 @@ $contracts = $pdo->query(
           </div>
         </div>
         <div class="grid grid-4">
-          <div class="field"><label>Agency Co-ordinator</label><input name="agency_coordinator"></div>
+          <div class="field">
+            <label>Agency Co-ordinator</label>
+            <select name="agency_coordinator">
+              <option value="">-- Select --</option>
+              <?php foreach ($agencyCoordinators as $ac): ?>
+                <option value="<?= htmlspecialchars($ac['first_name'] . ' ' . $ac['last_name']) ?>">
+                  <?= htmlspecialchars($ac['first_name'] . ' ' . $ac['last_name']) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <?php if (!$agencyCoordinators): ?>
+              <p style="color:var(--muted); font-size:11.5px; margin-top:6px;">No users hold the Agency Co-ordinator role yet — assign it from Users.</p>
+            <?php endif; ?>
+          </div>
           <div class="field"><label>Bid Ref. No.</label><input name="bid_ref_no"></div>
           <div class="field"><label>Bid Ref. Date</label><input type="date" name="bid_ref_date"></div>
           <div class="field"><label>Bid Open Date</label><input type="date" name="bid_open_date"></div>
