@@ -66,6 +66,7 @@ $contracts = $pdo->query(
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
 </head>
 <body>
 <div class="app-shell">
@@ -94,7 +95,7 @@ $contracts = $pdo->query(
               <?php endforeach; ?>
             </select>
           </div>
-          <div class="field"><label>Effective Date *</label><input type="date" name="effective_date" required></div>
+          <div class="field"><label>Effective Date *</label><input type="text" class="datepicker" name="effective_date" autocomplete="off" placeholder="YYYY-MM-DD" required></div>
           <div class="field">
             <label>Contract Type *</label>
             <select name="contract_type" required>
@@ -121,11 +122,11 @@ $contracts = $pdo->query(
             <?php endif; ?>
           </div>
           <div class="field"><label>Bid Ref. No.</label><input name="bid_ref_no"></div>
-          <div class="field"><label>Bid Ref. Date</label><input type="date" name="bid_ref_date"></div>
-          <div class="field"><label>Bid Open Date</label><input type="date" name="bid_open_date"></div>
+          <div class="field"><label>Bid Ref. Date</label><input type="text" class="datepicker" name="bid_ref_date" autocomplete="off" placeholder="YYYY-MM-DD"></div>
+          <div class="field"><label>Bid Open Date</label><input type="text" class="datepicker" name="bid_open_date" autocomplete="off" placeholder="YYYY-MM-DD"></div>
         </div>
         <div class="grid grid-4">
-          <div class="field"><label>Bid Last Submission Date</label><input type="date" name="bid_last_submission_date"></div>
+          <div class="field"><label>Bid Last Submission Date</label><input type="text" class="datepicker" name="bid_last_submission_date" autocomplete="off" placeholder="YYYY-MM-DD"></div>
           <div class="field"><label>Short Contract No.</label><input name="short_contract_no"></div>
           <div class="field">
             <label>Currency</label>
@@ -174,11 +175,14 @@ $contracts = $pdo->query(
   </main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
   document.getElementById('toggleNewContract').addEventListener('click', function () {
     var form = document.getElementById('newContractForm');
     form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
   });
+
+  flatpickr('.datepicker', { dateFormat: 'Y-m-d', allowInput: true });
 </script>
 </body>
 </html>

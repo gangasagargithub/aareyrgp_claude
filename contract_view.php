@@ -22,15 +22,53 @@ $billingAddresses = $pdo->prepare('SELECT id, address_code, address_description 
 $billingAddresses->execute(['id' => $contract['customer_id']]);
 $billingAddresses = $billingAddresses->fetchAll();
 
-// Every write action on this page (add operator, add rate group, upload attachment,
-// finalize) modifies a drafted contract or finalises it — restrict to Admin/Super Admin.
-$modifyActions = ['add_operator', 'add_rate_group', 'upload_attachment', 'finalize'];
+$agencyCoordinators = $pdo->query(
+    "SELECT u.id, u.first_name, u.last_name FROM users u
+     JOIN user_roles ur ON ur.user_id = u.id
+     JOIN roles r ON r.id = ur.role_id
+     WHERE r.name = 'Agency Co-ordinator' AND u.status = 'active'
+     ORDER BY u.first_name"
+)->fetchAll();
+
+// Every write action on this page (edit details, add operator, add rate group,
+// upload attachment, finalize) modifies a drafted contract or finalises it —
+// restrict to Admin/Super Admin.
+$modifyActions = ['update_contract', 'add_operator', 'add_rate_group', 'upload_attachment', 'finalize'];
 $requestedAction = $_POST['action'] ?? '';
 $isModifyRequest = $_SERVER['REQUEST_METHOD'] === 'POST' && in_array($requestedAction, $modifyActions, true);
 $canModify = !$isModifyRequest || isAdminOrSuperAdmin();
 
 if ($isModifyRequest && !$canModify) {
     $message = 'Only Admin or Super Admin can modify a drafted contract or finalize it.';
+}
+
+// Edit offer/contract details
+if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_contract') {
+    $stmt = $pdo->prepare(
+        "UPDATE contracts SET
+            agency_coordinator = :agency, effective_date = :eff, contract_type = :ctype,
+            bid_ref_no = :bid_ref, bid_ref_date = :bid_ref_date, bid_last_submission_date = :bid_last,
+            bid_open_date = :bid_open, short_contract_no = :short_no, remarks = :remarks,
+            invoicing_to_different_principal = :invoicing, currency = :currency
+         WHERE id = :id"
+    );
+    $stmt->execute([
+        'agency' => $_POST['agency_coordinator'] ?: null,
+        'eff' => $_POST['effective_date'] ?: null,
+        'ctype' => $_POST['contract_type'] ?: null,
+        'bid_ref' => $_POST['bid_ref_no'] ?: null,
+        'bid_ref_date' => $_POST['bid_ref_date'] ?: null,
+        'bid_last' => $_POST['bid_last_submission_date'] ?: null,
+        'bid_open' => $_POST['bid_open_date'] ?: null,
+        'short_no' => $_POST['short_contract_no'] ?: null,
+        'remarks' => $_POST['remarks'] ?: null,
+        'invoicing' => $_POST['invoicing_to_different_principal'] ?? 'no',
+        'currency' => $_POST['currency'] ?: 'INR',
+        'id' => $contractId,
+    ]);
+    logAction($_SESSION['user_id'], 'contract.update', "Updated details for contract #$contractId");
+    header("Location: contract_view.php?id=$contractId");
+    exit;
 }
 
 // Add operator (Principal's contract(s) with Operator(s))
@@ -160,6 +198,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
 </head>
 <body>
 <div class="app-shell">
@@ -168,8 +207,72 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
   <main class="main">
     <div class="topbar">
       <div class="breadcrumb"><a href="contracts.php">Offers &amp; Contracts</a> &middot; <strong><?= htmlspecialchars($contract['contract_number'] ?? ('#' . $contractId)) ?></strong> &middot; <?= htmlspecialchars($contract['customer_name']) ?></div>
-      <span class="badge <?= $statusBadgeClass ?>" style="font-size:13px; padding:6px 14px;"><?= htmlspecialchars($contract['status']) ?></span>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <?php if (isAdminOrSuperAdmin()): ?>
+        <button type="button" class="btn" id="toggleEditContract">Edit Details</button>
+        <?php endif; ?>
+        <span class="badge <?= $statusBadgeClass ?>" style="font-size:13px; padding:6px 14px;"><?= htmlspecialchars($contract['status']) ?></span>
+      </div>
     </div>
+
+    <?php if (isAdminOrSuperAdmin()): ?>
+    <div class="card" id="editContractForm" style="display:none; margin-bottom:20px;">
+      <h3>Edit Offer / Contract Details</h3>
+      <form method="post">
+        <input type="hidden" name="action" value="update_contract">
+        <div class="grid grid-4">
+          <div class="field">
+            <label>Agency Co-ordinator</label>
+            <select name="agency_coordinator">
+              <option value="">-- Select --</option>
+              <?php foreach ($agencyCoordinators as $ac):
+                $acName = $ac['first_name'] . ' ' . $ac['last_name']; ?>
+                <option value="<?= htmlspecialchars($acName) ?>" <?= $contract['agency_coordinator'] === $acName ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($acName) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field"><label>Effective Date</label><input type="text" class="datepicker" name="effective_date" autocomplete="off" value="<?= htmlspecialchars($contract['effective_date'] ?? '') ?>"></div>
+          <div class="field">
+            <label>Contract Type</label>
+            <select name="contract_type">
+              <option value="">-- Select --</option>
+              <?php foreach (['Contract With Rate', 'Contract Without Rate', 'Tender / Bid'] as $ctype): ?>
+                <option <?= $contract['contract_type'] === $ctype ? 'selected' : '' ?>><?= $ctype ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field">
+            <label>Currency</label>
+            <select name="currency">
+              <?php foreach (['INR' => 'INR - INDIAN RUPEES', 'USD' => 'USD - US DOLLAR', 'EUR' => 'EUR - EURO'] as $code => $label): ?>
+                <option value="<?= $code ?>" <?= $contract['currency'] === $code ? 'selected' : '' ?>><?= $label ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-4">
+          <div class="field"><label>Bid Ref. No.</label><input name="bid_ref_no" value="<?= htmlspecialchars($contract['bid_ref_no'] ?? '') ?>"></div>
+          <div class="field"><label>Bid Ref. Date</label><input type="text" class="datepicker" name="bid_ref_date" autocomplete="off" value="<?= htmlspecialchars($contract['bid_ref_date'] ?? '') ?>"></div>
+          <div class="field"><label>Bid Open Date</label><input type="text" class="datepicker" name="bid_open_date" autocomplete="off" value="<?= htmlspecialchars($contract['bid_open_date'] ?? '') ?>"></div>
+          <div class="field"><label>Bid Last Submission Date</label><input type="text" class="datepicker" name="bid_last_submission_date" autocomplete="off" value="<?= htmlspecialchars($contract['bid_last_submission_date'] ?? '') ?>"></div>
+        </div>
+        <div class="grid grid-4">
+          <div class="field"><label>Short Contract No.</label><input name="short_contract_no" value="<?= htmlspecialchars($contract['short_contract_no'] ?? '') ?>"></div>
+          <div class="field">
+            <label>Invoicing To Different Principal</label>
+            <select name="invoicing_to_different_principal">
+              <option value="no" <?= $contract['invoicing_to_different_principal'] === 'no' ? 'selected' : '' ?>>No</option>
+              <option value="yes" <?= $contract['invoicing_to_different_principal'] === 'yes' ? 'selected' : '' ?>>Yes</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Remarks</label><input name="remarks" value="<?= htmlspecialchars($contract['remarks'] ?? '') ?>"></div>
+        <button type="submit" class="btn primary">Save Changes</button>
+      </form>
+    </div>
+    <?php endif; ?>
 
     <?php if ($message): ?><div class="error-box"><?= htmlspecialchars($message) ?></div><?php endif; ?>
 
@@ -249,7 +352,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           <div class="grid grid-4">
             <div class="field"><label>Contract Clause No.</label><input name="contract_clause_no"></div>
             <div class="field" style="grid-column: span 2;"><label>Rate For *</label><input name="rate_for" required placeholder="e.g. Rate For MOD Clearance"></div>
-            <div class="field"><label>Effective Date</label><input type="date" name="effective_date"></div>
+            <div class="field"><label>Effective Date</label><input type="text" class="datepicker" name="effective_date" autocomplete="off" placeholder="YYYY-MM-DD"></div>
           </div>
           <div class="grid grid-4">
             <div class="field">
@@ -365,8 +468,8 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
         <form method="post">
           <input type="hidden" name="action" value="finalize">
           <div class="grid grid-4">
-            <div class="field"><label>Start Date (Effective Date) *</label><input type="date" name="start_date" required></div>
-            <div class="field"><label>End Date *</label><input type="date" name="end_date" required></div>
+            <div class="field"><label>Start Date (Effective Date) *</label><input type="text" class="datepicker" name="start_date" autocomplete="off" placeholder="YYYY-MM-DD" required></div>
+            <div class="field"><label>End Date *</label><input type="text" class="datepicker" name="end_date" autocomplete="off" placeholder="YYYY-MM-DD" required></div>
           </div>
           <button type="submit" class="btn primary" onclick="return confirm('Finalize this offer and convert it to a contract? This cannot be undone.');">Finalize &amp; Convert to Contract</button>
         </form>
@@ -377,7 +480,16 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
   </main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
+  var toggleEditBtn = document.getElementById('toggleEditContract');
+  if (toggleEditBtn) {
+    toggleEditBtn.addEventListener('click', function () {
+      var f = document.getElementById('editContractForm');
+      f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    });
+  }
+
   var toggleOperatorBtn = document.getElementById('toggleOperatorForm');
   if (toggleOperatorBtn) {
     toggleOperatorBtn.addEventListener('click', function () {
@@ -418,6 +530,8 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
       rows.appendChild(rateField);
     });
   }
+
+  flatpickr('.datepicker', { dateFormat: 'Y-m-d', allowInput: true });
 </script>
 </body>
 </html>

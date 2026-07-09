@@ -389,3 +389,72 @@ label {
   color: var(--muted);
   font-family: var(--font-mono);
 }
+
+/* ---------------- Flatpickr (date picker) theming ---------------- */
+.flatpickr-calendar {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+  font-family: var(--font-body) !important;
+}
+
+.flatpickr-months, .flatpickr-weekdays {
+  background: var(--panel-alt) !important;
+}
+
+.flatpickr-month {
+  color: var(--text) !important;
+  fill: var(--text) !important;
+}
+
+.flatpickr-current-month input.cur-year,
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+  color: var(--text) !important;
+  font-family: var(--font-body) !important;
+}
+
+.flatpickr-weekday {
+  background: var(--panel-alt) !important;
+  color: var(--muted) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+}
+
+.flatpickr-day {
+  color: var(--text) !important;
+  font-family: var(--font-mono) !important;
+}
+
+.flatpickr-day.flatpickr-disabled, .flatpickr-day.flatpickr-disabled:hover {
+  color: var(--muted) !important;
+  opacity: 0.4;
+}
+
+.flatpickr-day:hover {
+  background: var(--panel-alt) !important;
+  border-color: var(--border) !important;
+}
+
+.flatpickr-day.today {
+  border-color: var(--amber) !important;
+}
+
+.flatpickr-day.selected, .flatpickr-day.selected:hover {
+  background: var(--cyan) !important;
+  border-color: var(--cyan) !important;
+  color: #052421 !important;
+  font-weight: 700;
+}
+
+.flatpickr-prev-month:hover svg, .flatpickr-next-month:hover svg {
+  fill: var(--cyan) !important;
+}
+
+.flatpickr-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2300D9C0' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  padding-right: 38px !important;
+  cursor: pointer;
+}

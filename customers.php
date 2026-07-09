@@ -100,6 +100,7 @@ $customers = $pdo->query(
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
 </head>
 <body>
 <div class="app-shell">
@@ -136,7 +137,7 @@ $customers = $pdo->query(
             </select>
           </div>
           <div class="field"><label>Turnover</label><input name="turnover"></div>
-          <div class="field"><label>Operating Since</label><input type="date" name="operating_since"></div>
+          <div class="field"><label>Operating Since</label><input type="text" class="datepicker" name="operating_since" autocomplete="off" placeholder="YYYY-MM-DD"></div>
           <div class="field"><label>PAN No</label><input name="pan_no"></div>
         </div>
         <div class="grid grid-4">
@@ -229,11 +230,14 @@ $customers = $pdo->query(
   </main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
   document.getElementById('toggleNewCustomer').addEventListener('click', function () {
     var form = document.getElementById('newCustomerForm');
     form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
   });
+
+  flatpickr('.datepicker', { dateFormat: 'Y-m-d', allowInput: true });
 </script>
 </body>
 </html>
