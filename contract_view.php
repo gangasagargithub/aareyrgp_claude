@@ -225,13 +225,29 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
             <label>Agency Co-ordinator</label>
             <select name="agency_coordinator">
               <option value="">-- Select --</option>
+              <?php
+                $currentAgency = $contract['agency_coordinator'] ?? '';
+                $agencyNames = [];
+                foreach ($agencyCoordinators as $ac) {
+                    $agencyNames[] = $ac['first_name'] . ' ' . $ac['last_name'];
+                }
+                $currentAgencyStillHasRole = in_array($currentAgency, $agencyNames, true);
+              ?>
+              <?php if ($currentAgency !== '' && !$currentAgencyStillHasRole): ?>
+                <option value="<?= htmlspecialchars($currentAgency) ?>" selected>
+                  <?= htmlspecialchars($currentAgency) ?> (current — role no longer assigned)
+                </option>
+              <?php endif; ?>
               <?php foreach ($agencyCoordinators as $ac):
                 $acName = $ac['first_name'] . ' ' . $ac['last_name']; ?>
-                <option value="<?= htmlspecialchars($acName) ?>" <?= $contract['agency_coordinator'] === $acName ? 'selected' : '' ?>>
+                <option value="<?= htmlspecialchars($acName) ?>" <?= $currentAgency === $acName ? 'selected' : '' ?>>
                   <?= htmlspecialchars($acName) ?>
                 </option>
               <?php endforeach; ?>
             </select>
+            <?php if ($currentAgency !== '' && !$currentAgencyStillHasRole): ?>
+              <p style="color:var(--amber); font-size:11px; margin-top:6px;">This person no longer holds the Agency Co-ordinator role — kept as-is unless you pick someone else.</p>
+            <?php endif; ?>
           </div>
           <div class="field"><label>Effective Date</label><input type="text" class="datepicker" name="effective_date" autocomplete="off" value="<?= htmlspecialchars($contract['effective_date'] ?? '') ?>"></div>
           <div class="field">
