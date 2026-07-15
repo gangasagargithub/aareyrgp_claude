@@ -33,6 +33,9 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
     <a class="nav-link <?= $currentPage === 'contracts.php' ? 'active' : '' ?>" href="contracts.php">
       <span class="nav-icon">&#128196;</span> Offers &amp; Contracts
     </a>
+    <a class="nav-link <?= $currentPage === 'rate_structure_master.php' ? 'active' : '' ?>" href="rate_structure_master.php">
+      <span class="nav-icon">&#128202;</span> Rate Structure Master
+    </a>
   </div>
 
   <div class="nav-group">

@@ -4,8 +4,12 @@ requireLogin();
 
 $pdo = getConnection();
 $message = '';
+$messageType = 'error';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_customer') {
+    if (!canCreate()) {
+        $message = 'You do not have permission to create customers.';
+    } else {
     try {
         $pdo->beginTransaction();
 
@@ -77,9 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $pdo->commit();
         logAction($_SESSION['user_id'], 'customer.create', "Created customer #$customerId ({$_POST['customer_name']})");
         $message = 'Customer created. Add contact person and billing address from the customer detail page.';
+        $messageType = 'success';
     } catch (Exception $e) {
         $pdo->rollBack();
         $message = 'Error: ' . $e->getMessage();
+    }
     }
 }
 
@@ -109,11 +115,16 @@ $customers = $pdo->query(
   <main class="main">
     <div class="topbar">
       <div class="breadcrumb"><strong>Customers</strong> &middot; <?= count($customers) ?> total</div>
+      <?php if (canCreate()): ?>
       <button type="button" class="btn primary" id="toggleNewCustomer">+ New customer (Step 1: Master)</button>
+      <?php endif; ?>
     </div>
 
-    <?php if ($message): ?><div class="error-box" style="background:var(--cyan-dim); border-color:var(--cyan); color:var(--cyan);"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?>
+      <div class="error-box" <?= $messageType === 'success' ? 'style="background:var(--cyan-dim); border-color:var(--cyan); color:var(--cyan);"' : '' ?>><?= htmlspecialchars($message) ?></div>
+    <?php endif; ?>
 
+    <?php if (canCreate()): ?>
     <div class="card" id="newCustomerForm" style="display:none; margin-bottom:20px;">
       <h3>Customer Master</h3>
       <p style="color:var(--muted); font-size:12.5px; margin-top:-8px;">Step 1 of the onboarding process. Add contacts and billing addresses afterward from the customer detail page.</p>
@@ -202,6 +213,7 @@ $customers = $pdo->query(
         <button type="submit" class="btn primary">Submit</button>
       </form>
     </div>
+    <?php endif; ?>
 
     <div class="table-wrap">
       <table>
@@ -232,10 +244,13 @@ $customers = $pdo->query(
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
-  document.getElementById('toggleNewCustomer').addEventListener('click', function () {
-    var form = document.getElementById('newCustomerForm');
-    form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
-  });
+  var toggleNewCustomerBtn = document.getElementById('toggleNewCustomer');
+  if (toggleNewCustomerBtn) {
+    toggleNewCustomerBtn.addEventListener('click', function () {
+      var form = document.getElementById('newCustomerForm');
+      form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
+    });
+  }
 
   flatpickr('.datepicker', { dateFormat: 'Y-m-d', allowInput: true });
 </script>

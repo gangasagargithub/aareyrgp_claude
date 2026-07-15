@@ -30,6 +30,13 @@ $agencyCoordinators = $pdo->query(
      ORDER BY u.first_name"
 )->fetchAll();
 
+// Rate Structure master lists (managed via rate_structure_master.php)
+$rateLocations = $pdo->query("SELECT name FROM rate_master_locations WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+$ratePriorities = $pdo->query("SELECT name FROM rate_master_priorities WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+$rateModTypes = $pdo->query("SELECT name FROM rate_master_mod_types WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+$rateUnits = $pdo->query("SELECT name FROM rate_master_units WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+$rateForOptions = $pdo->query("SELECT name FROM rate_master_rate_for WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+
 // Every write action on this page (edit details, add operator, add rate group,
 // upload attachment, finalize) modifies a drafted contract or finalises it —
 // restrict to Admin/Super Admin.
@@ -367,7 +374,13 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           <input type="hidden" name="action" value="add_rate_group">
           <div class="grid grid-4">
             <div class="field"><label>Contract Clause No.</label><input name="contract_clause_no"></div>
-            <div class="field" style="grid-column: span 2;"><label>Rate For *</label><input name="rate_for" required placeholder="e.g. Rate For MOD Clearance"></div>
+            <div class="field" style="grid-column: span 2;">
+              <label>Rate For *</label>
+              <input name="rate_for" list="rateForList" required placeholder="e.g. Rate For MOD Clearance">
+              <datalist id="rateForList">
+                <?php foreach ($rateForOptions as $rf): ?><option value="<?= htmlspecialchars($rf) ?>"><?php endforeach; ?>
+              </datalist>
+            </div>
             <div class="field"><label>Effective Date</label><input type="text" class="datepicker" name="effective_date" autocomplete="off" placeholder="YYYY-MM-DD"></div>
           </div>
           <div class="grid grid-4">
@@ -393,15 +406,29 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           <h4 style="margin:18px 0 10px;">Rate Rows</h4>
           <div id="rateRows">
             <div class="grid grid-4 rate-row" style="margin-bottom:8px;">
-              <div class="field"><label>Location</label><input name="loc_location[]"></div>
-              <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
+              <div class="field">
+                <label>Location</label>
+                <select name="loc_location[]">
+                  <?php foreach ($rateLocations as $loc): ?><option><?= htmlspecialchars($loc) ?></option><?php endforeach; ?>
+                </select>
+              </div>
+              <div class="field">
+                <label>Per</label>
+                <select name="loc_per[]">
+                  <?php foreach ($rateUnits as $unit): ?><option><?= htmlspecialchars($unit) ?></option><?php endforeach; ?>
+                </select>
+              </div>
               <div class="field">
                 <label>Priority</label>
-                <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
+                <select name="loc_priority[]">
+                  <?php foreach ($ratePriorities as $p): ?><option><?= htmlspecialchars($p) ?></option><?php endforeach; ?>
+                </select>
               </div>
               <div class="field">
                 <label>Mod Type</label>
-                <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
+                <select name="loc_mod[]">
+                  <?php foreach ($rateModTypes as $mt): ?><option><?= htmlspecialchars($mt) ?></option><?php endforeach; ?>
+                </select>
               </div>
             </div>
             <div class="field" style="max-width:200px;"><label>Rate</label><input type="number" step="0.01" name="loc_rate[]"></div>
@@ -522,6 +549,21 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     });
   }
 
+  var RATE_MASTER = {
+    locations: <?= json_encode($rateLocations) ?>,
+    units: <?= json_encode($rateUnits) ?>,
+    priorities: <?= json_encode($ratePriorities) ?>,
+    modTypes: <?= json_encode($rateModTypes) ?>
+  };
+
+  function buildOptions(values) {
+    return values.map(function (v) {
+      var opt = document.createElement('option');
+      opt.textContent = v;
+      return opt.outerHTML;
+    }).join('');
+  }
+
   var addRateRowBtn = document.getElementById('addRateRow');
   if (addRateRowBtn) {
     addRateRowBtn.addEventListener('click', function () {
@@ -530,13 +572,13 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
       row.className = 'grid grid-4 rate-row';
       row.style.marginBottom = '8px';
       row.innerHTML = `
-        <div class="field"><label>Location</label><input name="loc_location[]"></div>
-        <div class="field"><label>Per</label><input name="loc_per[]" placeholder="PER VESSEL"></div>
+        <div class="field"><label>Location</label><select name="loc_location[]">${buildOptions(RATE_MASTER.locations)}</select></div>
+        <div class="field"><label>Per</label><select name="loc_per[]">${buildOptions(RATE_MASTER.units)}</select></div>
         <div class="field"><label>Priority</label>
-          <select name="loc_priority[]"><option>NORMAL</option><option>URGENT</option></select>
+          <select name="loc_priority[]">${buildOptions(RATE_MASTER.priorities)}</select>
         </div>
         <div class="field"><label>Mod Type</label>
-          <select name="loc_mod[]"><option>FRESH</option><option>EXTENSION</option><option>BLOCK INCLUSION</option><option>BLOCK TRANSFER</option></select>
+          <select name="loc_mod[]">${buildOptions(RATE_MASTER.modTypes)}</select>
         </div>`;
       rows.appendChild(row);
       var rateField = document.createElement('div');

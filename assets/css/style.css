@@ -1,18 +1,20 @@
 /* ==========================================================
    RBAC Console — Design tokens
-   Theme: Network Operations Center
+   Theme: Network Operations Center (Light)
    ========================================================== */
 :root {
-  --bg:        #0F1420;
-  --panel:     #161B29;
-  --panel-alt: #1D2333;
-  --border:    #262D40;
-  --text:      #E7EAF0;
-  --muted:     #8892A6;
-  --cyan:      #00D9C0;
-  --cyan-dim:  #0A3D38;
-  --amber:     #F5A623;
-  --red:       #E5484D;
+  --bg:        #F6F7FA;
+  --panel:     #FFFFFF;
+  --panel-alt: #F1F3F7;
+  --border:    #E1E5EC;
+  --text:      #1A2030;
+  --muted:     #667085;
+  --cyan:      #0D9488;
+  --cyan-dim:  #E1F7F3;
+  --amber:     #B45309;
+  --amber-dim: #FEF3C7;
+  --red:       #DC2626;
+  --red-dim:   #FEE2E2;
 
   --font-display: 'Space Grotesk', sans-serif;
   --font-body:    'Inter', sans-serif;
@@ -166,7 +168,7 @@ code, .mono, .stat-value, td.mono {
   border-radius: 50%;
   background: linear-gradient(135deg, var(--cyan), #0891b2);
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 12px; color: #052421;
+  font-weight: 700; font-size: 12px; color: #FFFFFF;
 }
 
 /* ---------------- Status strip (signature element) ---------------- */
@@ -215,6 +217,7 @@ code, .mono, .stat-value, td.mono {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.04);
 }
 
 .card-title {
@@ -239,6 +242,7 @@ code, .mono, .stat-value, td.mono {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.04);
 }
 
 table { width: 100%; border-collapse: collapse; }
@@ -261,7 +265,7 @@ tbody td {
 }
 
 tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: rgba(255,255,255,0.02); }
+tbody tr:hover { background: rgba(0,0,0,0.025); }
 
 .badge {
   display: inline-block;
@@ -273,8 +277,8 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
 }
 
 .badge.active   { background: var(--cyan-dim); color: var(--cyan); }
-.badge.inactive { background: #2A2118; color: var(--amber); }
-.badge.suspended{ background: #2E1417; color: var(--red); }
+.badge.inactive { background: var(--amber-dim); color: var(--amber); }
+.badge.suspended{ background: var(--red-dim); color: var(--red); }
 
 /* ---------------- Buttons / forms ---------------- */
 .btn {
@@ -297,10 +301,10 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
 .btn.primary {
   background: var(--cyan);
   border-color: var(--cyan);
-  color: #052421;
+  color: #FFFFFF;
 }
 
-.btn.primary:hover { background: #0FE8CE; }
+.btn.primary:hover { background: #0B7A70; }
 
 input, select {
   width: 100%;
@@ -334,8 +338,8 @@ label {
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 20% 20%, rgba(0,217,192,0.06), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(245,166,35,0.05), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(13,148,136,0.08), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(180,83,9,0.06), transparent 40%),
     var(--bg);
   position: relative;
 }
@@ -345,8 +349,8 @@ label {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    linear-gradient(rgba(0,0,0,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.035) 1px, transparent 1px);
   background-size: 42px 42px;
   pointer-events: none;
 }
@@ -358,6 +362,7 @@ label {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 32px 30px;
+  box-shadow: 0 4px 20px rgba(16,24,40,0.08);
 }
 
 .login-terminal {
@@ -373,9 +378,9 @@ label {
 .login-terminal .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); }
 
 .error-box {
-  background: #2E1417;
+  background: var(--red-dim);
   border: 1px solid var(--red);
-  color: #FF9DA0;
+  color: #991B1B;
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;
@@ -443,7 +448,7 @@ label {
 .flatpickr-day.selected, .flatpickr-day.selected:hover {
   background: var(--cyan) !important;
   border-color: var(--cyan) !important;
-  color: #052421 !important;
+  color: #FFFFFF !important;
   font-weight: 700;
 }
 
@@ -452,7 +457,7 @@ label {
 }
 
 .flatpickr-input {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2300D9C0' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z'/%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%230D9488' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z'/%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
   background-position: right 12px center !important;
   padding-right: 38px !important;

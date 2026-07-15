@@ -94,17 +94,49 @@ function logoutUser(): void
     session_destroy();
 }
 
+/** True if the currently logged-in user holds the given role. */
+function hasRole(string $role): bool
+{
+    return in_array($role, $_SESSION['roles'] ?? [], true);
+}
+
 /** True if the currently logged-in user holds the Super Admin role. */
 function isSuperAdmin(): bool
 {
-    return in_array('Super Admin', $_SESSION['roles'] ?? [], true);
+    return hasRole('Super Admin');
 }
 
-/** True if the currently logged-in user holds Super Admin or Admin. */
+/**
+ * Permission matrix:
+ * - Super Admin: everything (create, edit, delete, reset password, view)
+ * - Admin:       create + edit + reset password + view — NOT delete
+ * - Editor:      reset password only — no create/edit/delete
+ * - Viewer:      view only — no writes at all
+ */
+function canCreate(): bool
+{
+    return isSuperAdmin() || hasRole('Admin');
+}
+
+function canEdit(): bool
+{
+    return isSuperAdmin() || hasRole('Admin');
+}
+
+function canDelete(): bool
+{
+    return isSuperAdmin();
+}
+
+function canResetPassword(): bool
+{
+    return isSuperAdmin() || hasRole('Admin') || hasRole('Editor');
+}
+
+/** @deprecated kept as an alias for canEdit() so existing call sites keep working. */
 function isAdminOrSuperAdmin(): bool
 {
-    $roles = $_SESSION['roles'] ?? [];
-    return in_array('Super Admin', $roles, true) || in_array('Admin', $roles, true);
+    return canEdit();
 }
 
 /**

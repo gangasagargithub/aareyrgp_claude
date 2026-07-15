@@ -4,39 +4,45 @@ requireLogin();
 
 $pdo = getConnection();
 $message = '';
+$messageType = 'error';
 
-// Handle new user creation
+// Handle new user creation (Super Admin, Admin)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create') {
-    $first = trim($_POST['first_name'] ?? '');
-    $last  = trim($_POST['last_name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $pass  = $_POST['password'] ?? '';
-    $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
+    if (!canCreate()) {
+        $message = 'You do not have permission to create users.';
+    } else {
+        $first = trim($_POST['first_name'] ?? '');
+        $last  = trim($_POST['last_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $pass  = $_POST['password'] ?? '';
+        $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
 
-    if ($first && $last && $email && $pass) {
-        $hash = password_hash($pass, PASSWORD_BCRYPT);
-        $stmt = $pdo->prepare(
-            'INSERT INTO users (first_name, last_name, email, password) VALUES (:f, :l, :e, :p)'
-        );
-        $stmt->execute(['f' => $first, 'l' => $last, 'e' => $email, 'p' => $hash]);
-        $newId = (int)$pdo->lastInsertId();
+        if ($first && $last && $email && $pass) {
+            $hash = password_hash($pass, PASSWORD_BCRYPT);
+            $stmt = $pdo->prepare(
+                'INSERT INTO users (first_name, last_name, email, password) VALUES (:f, :l, :e, :p)'
+            );
+            $stmt->execute(['f' => $first, 'l' => $last, 'e' => $email, 'p' => $hash]);
+            $newId = (int)$pdo->lastInsertId();
 
-        foreach (array_unique($roleIds) as $roleId) {
-            if ($roleId) {
-                $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
-                    ->execute(['u' => $newId, 'r' => $roleId]);
+            foreach (array_unique($roleIds) as $roleId) {
+                if ($roleId) {
+                    $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
+                        ->execute(['u' => $newId, 'r' => $roleId]);
+                }
             }
-        }
 
-        logAction($_SESSION['user_id'], 'user.create', "Created user #$newId ($email)");
-        $message = 'User created.';
+            logAction($_SESSION['user_id'], 'user.create', "Created user #$newId ($email)");
+            $message = 'User created.';
+            $messageType = 'success';
+        }
     }
 }
 
-// Handle password reset (Super Admin only)
+// Handle password reset (Super Admin, Admin, Editor)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reset_password') {
-    if (!isSuperAdmin()) {
-        $message = 'Only Super Admin can reset passwords.';
+    if (!canResetPassword()) {
+        $message = 'You do not have permission to reset passwords.';
     } else {
         $id = (int)($_POST['user_id'] ?? 0);
         $newPassword = $_POST['new_password'] ?? '';
@@ -45,18 +51,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reset
             $hash = password_hash($newPassword, PASSWORD_BCRYPT);
             $pdo->prepare('UPDATE users SET password = :p WHERE id = :id')
                 ->execute(['p' => $hash, 'id' => $id]);
-            logAction($_SESSION['user_id'], 'user.password_reset', "Super Admin reset password for user #$id");
+            logAction($_SESSION['user_id'], 'user.password_reset', "Password reset for user #$id");
             $message = 'Password reset successfully.';
+            $messageType = 'success';
         } else {
             $message = 'Password must be at least 6 characters.';
         }
     }
 }
 
-// Handle user info update (Super Admin only)
+// Handle user info update (Super Admin, Admin)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_user') {
-    if (!isSuperAdmin()) {
-        $message = 'Only Super Admin can modify user info.';
+    if (!canEdit()) {
+        $message = 'You do not have permission to modify user info.';
     } else {
         $id      = (int)($_POST['user_id'] ?? 0);
         $first   = trim($_POST['first_name'] ?? '');
@@ -84,38 +91,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
             logAction($_SESSION['user_id'], 'user.update', "Updated info for user #$id ($email)");
             $message = 'User info updated.';
+            $messageType = 'success';
         } else {
             $message = 'First name, last name, and email are required.';
         }
     }
 }
 
-// Handle status toggle (active <-> inactive)
+// Handle status toggle (active <-> inactive) — Super Admin, Admin
 if (isset($_GET['toggle_status'])) {
-    $id = (int)$_GET['toggle_status'];
+    if (!canEdit()) {
+        $message = 'You do not have permission to change user status.';
+    } else {
+        $id = (int)$_GET['toggle_status'];
 
-    $stmt = $pdo->prepare('SELECT status FROM users WHERE id = :id');
-    $stmt->execute(['id' => $id]);
-    $current = $stmt->fetchColumn();
+        $stmt = $pdo->prepare('SELECT status FROM users WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        $current = $stmt->fetchColumn();
 
-    if ($current) {
-        $new = $current === 'active' ? 'inactive' : 'active';
-        $pdo->prepare('UPDATE users SET status = :s WHERE id = :id')
-            ->execute(['s' => $new, 'id' => $id]);
-        logAction($_SESSION['user_id'], 'user.status_change', "User #$id set to $new");
+        if ($current) {
+            $new = $current === 'active' ? 'inactive' : 'active';
+            $pdo->prepare('UPDATE users SET status = :s WHERE id = :id')
+                ->execute(['s' => $new, 'id' => $id]);
+            logAction($_SESSION['user_id'], 'user.status_change', "User #$id set to $new");
+        }
+
+        header('Location: users.php');
+        exit;
     }
-
-    header('Location: users.php');
-    exit;
 }
 
-// Handle delete
+// Handle delete — Super Admin only
 if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
-    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $id]);
-    logAction($_SESSION['user_id'], 'user.delete', "Deleted user #$id");
-    header('Location: users.php');
-    exit;
+    if (!canDelete()) {
+        $message = 'Only Super Admin can delete users.';
+    } else {
+        $id = (int)$_GET['delete'];
+        $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $id]);
+        logAction($_SESSION['user_id'], 'user.delete', "Deleted user #$id");
+        header('Location: users.php');
+        exit;
+    }
 }
 
 $roles = $pdo->query('SELECT id, name FROM roles ORDER BY name')->fetchAll();
@@ -153,11 +169,16 @@ unset($u);
   <main class="main">
     <div class="topbar">
       <div class="breadcrumb"><strong>Users</strong> &middot; <?= count($users) ?> total</div>
+      <?php if (canCreate()): ?>
       <button type="button" class="btn primary" id="toggleNewUser">+ New user</button>
+      <?php endif; ?>
     </div>
 
-    <?php if ($message): ?><div class="error-box" style="background:var(--cyan-dim); border-color:var(--cyan); color:var(--cyan);"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?>
+      <div class="error-box" <?= $messageType === 'success' ? 'style="background:var(--cyan-dim); border-color:var(--cyan); color:var(--cyan);"' : '' ?>><?= htmlspecialchars($message) ?></div>
+    <?php endif; ?>
 
+    <?php if (canCreate()): ?>
     <div class="card" id="newUserForm" style="display:none; margin-bottom:20px;">
       <h3>Create user</h3>
       <form method="post">
@@ -181,6 +202,7 @@ unset($u);
         <button type="submit" class="btn primary">Save user</button>
       </form>
     </div>
+    <?php endif; ?>
 
     <div class="table-wrap">
       <table>
@@ -196,21 +218,28 @@ unset($u);
             <td><span class="badge <?= $u['status'] ?>"><?= htmlspecialchars($u['status']) ?></span></td>
             <td class="mono" style="color:var(--muted)"><?= $u['last_login'] ? htmlspecialchars($u['last_login']) : 'never' ?></td>
             <td>
+              <?php if (canEdit()): ?>
               <a href="users.php?toggle_status=<?= $u['id'] ?>"
                  onclick="return confirm('<?= $u['status'] === 'active' ? 'Deactivate' : 'Activate' ?> this user?');"
                  style="color:<?= $u['status'] === 'active' ? 'var(--amber)' : 'var(--cyan)' ?>; margin-right:14px;">
                 <?= $u['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
               </a>
-              <?php if (isSuperAdmin()): ?>
               <a href="#" class="edit-user-toggle" data-id="<?= $u['id'] ?>" style="color:var(--text); margin-right:14px;">Edit</a>
+              <?php endif; ?>
+              <?php if (canResetPassword()): ?>
               <a href="#" class="reset-pw-toggle" data-id="<?= $u['id'] ?>" style="color:var(--cyan); margin-right:14px;">Reset Password</a>
               <?php endif; ?>
+              <?php if (canDelete()): ?>
               <a href="users.php?delete=<?= $u['id'] ?>"
                  onclick="return confirm('Delete this user?');"
                  style="color:var(--red);">Delete</a>
+              <?php endif; ?>
+              <?php if (!canEdit() && !canResetPassword() && !canDelete()): ?>
+              <span style="color:var(--muted); font-size:12px;">View only</span>
+              <?php endif; ?>
             </td>
           </tr>
-          <?php if (isSuperAdmin()): ?>
+          <?php if (canEdit()): ?>
           <tr id="edit-user-row-<?= $u['id'] ?>" style="display:none;">
             <td colspan="6" style="background:var(--panel-alt);">
               <form method="post" style="padding:14px 0;">
@@ -237,7 +266,7 @@ unset($u);
             </td>
           </tr>
           <?php endif; ?>
-          <?php if (isSuperAdmin()): ?>
+          <?php if (canResetPassword()): ?>
           <tr id="reset-pw-row-<?= $u['id'] ?>" style="display:none;">
             <td colspan="6" style="background:var(--panel-alt);">
               <form method="post" style="display:flex; align-items:end; gap:12px; padding:10px 0;">

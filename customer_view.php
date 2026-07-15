@@ -15,8 +15,14 @@ if (!$customer) {
     exit;
 }
 
+// Every write on this page (add contact, add billing address) requires create permission.
+$canWrite = canCreate();
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['add_contact', 'add_billing'], true) && !$canWrite) {
+    $message = 'You do not have permission to add contacts or billing addresses.';
+}
+
 // Add contact person (Step 1: Add Contact Person Details For Billing)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_contact') {
+if ($canWrite && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_contact') {
     $stmt = $pdo->prepare(
         "INSERT INTO customer_contacts
             (customer_id, contact_name, nick_name, designation, contact_type,
@@ -43,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_c
 }
 
 // Add billing address (Step 2: Customer Billing Address Mapping)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_billing') {
+if ($canWrite && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_billing') {
     $stmt = $pdo->prepare(
         "INSERT INTO customer_billing_addresses
             (customer_id, address_code, address_line1, address_line2, address_line3, address_description,
@@ -99,8 +105,12 @@ $contracts = $contracts->fetchAll();
   <main class="main">
     <div class="topbar">
       <div class="breadcrumb"><a href="customers.php">Customers</a> &middot; <strong><?= htmlspecialchars($customer['customer_name']) ?></strong></div>
+      <?php if (canCreate()): ?>
       <a href="contracts.php?new_for=<?= $customerId ?>" class="btn primary">+ Create Offer / Contract</a>
+      <?php endif; ?>
     </div>
+
+    <?php if ($message): ?><div class="error-box"><?= htmlspecialchars($message) ?></div><?php endif; ?>
 
     <div class="grid grid-4" style="margin-bottom:20px;">
       <div class="card"><div class="card-title">Customer Code</div><div class="stat-value mono" style="font-size:18px;"><?= htmlspecialchars($customer['customer_code']) ?></div></div>
@@ -135,9 +145,12 @@ $contracts = $contracts->fetchAll();
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3>Contact Persons (Billing)</h3>
+        <?php if (canCreate()): ?>
         <button type="button" class="btn primary" id="toggleContactForm">+ Add Contact Details</button>
+        <?php endif; ?>
       </div>
 
+      <?php if (canCreate()): ?>
       <div id="contactForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
         <form method="post">
           <input type="hidden" name="action" value="add_contact">
@@ -179,6 +192,7 @@ $contracts = $contracts->fetchAll();
           <button type="submit" class="btn primary">Submit</button>
         </form>
       </div>
+      <?php endif; ?>
 
       <div class="table-wrap" style="border:none; margin-top:14px;">
         <table>
@@ -203,9 +217,12 @@ $contracts = $contracts->fetchAll();
     <div class="card" style="margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3>Customer Billing Addresses</h3>
+        <?php if (canCreate()): ?>
         <button type="button" class="btn primary" id="toggleBillingForm">+ Add Billing Address</button>
+        <?php endif; ?>
       </div>
 
+      <?php if (canCreate()): ?>
       <div id="billingForm" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:16px;">
         <form method="post">
           <input type="hidden" name="action" value="add_billing">
@@ -237,6 +254,7 @@ $contracts = $contracts->fetchAll();
           <button type="submit" class="btn primary">Submit</button>
         </form>
       </div>
+      <?php endif; ?>
 
       <div class="table-wrap" style="border:none; margin-top:14px;">
         <table>
@@ -281,14 +299,21 @@ $contracts = $contracts->fetchAll();
 </div>
 
 <script>
-  document.getElementById('toggleContactForm').addEventListener('click', function () {
-    var f = document.getElementById('contactForm');
-    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
-  });
-  document.getElementById('toggleBillingForm').addEventListener('click', function () {
-    var f = document.getElementById('billingForm');
-    f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
-  });
+  var toggleContactBtn = document.getElementById('toggleContactForm');
+  if (toggleContactBtn) {
+    toggleContactBtn.addEventListener('click', function () {
+      var f = document.getElementById('contactForm');
+      f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    });
+  }
+
+  var toggleBillingBtn = document.getElementById('toggleBillingForm');
+  if (toggleBillingBtn) {
+    toggleBillingBtn.addEventListener('click', function () {
+      var f = document.getElementById('billingForm');
+      f.style.display = (f.style.display === 'none' || !f.style.display) ? 'block' : 'none';
+    });
+  }
 </script>
 </body>
 </html>

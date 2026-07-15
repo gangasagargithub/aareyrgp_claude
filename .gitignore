@@ -1,6 +1,7 @@
 # Ignore config folder
 config/
 database/
+Local/
 
 # Optional: Ignore vendor (if using Composer)
 vendor/

@@ -7,6 +7,9 @@ $message = '';
 $newForCustomer = (int)($_GET['new_for'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_contract') {
+    if (!canCreate()) {
+        $message = 'You do not have permission to create offers.';
+    } else {
     $pdo->beginTransaction();
     $contractNumber = generateContractNumber($pdo);
 
@@ -39,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     logAction($_SESSION['user_id'], 'contract.create', "Created offer #$contractId ($contractNumber)");
     header("Location: contract_view.php?id=$contractId");
     exit;
+    }
 }
 
 $customers = $pdo->query("SELECT id, customer_name, customer_code FROM customers ORDER BY customer_name")->fetchAll();
@@ -75,9 +79,14 @@ $contracts = $pdo->query(
   <main class="main">
     <div class="topbar">
       <div class="breadcrumb"><strong>Offers &amp; Contracts</strong> &middot; <?= count($contracts) ?> total</div>
+      <?php if (canCreate()): ?>
       <button type="button" class="btn primary" id="toggleNewContract">+ New Offer (Step 3)</button>
+      <?php endif; ?>
     </div>
 
+    <?php if ($message): ?><div class="error-box"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+
+    <?php if (canCreate()): ?>
     <div class="card" id="newContractForm" style="display:<?= $newForCustomer ? 'block' : 'none' ?>; margin-bottom:20px;">
       <h3>New Offer</h3>
       <p style="color:var(--muted); font-size:12.5px; margin-top:-8px;">Add operators, rates, attachments, and finalize from the offer detail page after creating.</p>
@@ -148,6 +157,7 @@ $contracts = $pdo->query(
         <button type="submit" class="btn primary">Save &amp; Continue</button>
       </form>
     </div>
+    <?php endif; ?>
 
     <div class="table-wrap">
       <table>
@@ -177,10 +187,13 @@ $contracts = $pdo->query(
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <script>
-  document.getElementById('toggleNewContract').addEventListener('click', function () {
-    var form = document.getElementById('newContractForm');
-    form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
-  });
+  var toggleNewContractBtn = document.getElementById('toggleNewContract');
+  if (toggleNewContractBtn) {
+    toggleNewContractBtn.addEventListener('click', function () {
+      var form = document.getElementById('newContractForm');
+      form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
+    });
+  }
 
   flatpickr('.datepicker', { dateFormat: 'Y-m-d', allowInput: true });
 </script>
