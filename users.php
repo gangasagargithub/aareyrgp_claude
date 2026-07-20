@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $email = trim($_POST['email'] ?? '');
         $pass  = $_POST['password'] ?? '';
         $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
+        $categoryIds = array_map('intval', $_POST['category_ids'] ?? []);
 
         if ($first && $last && $email && $pass) {
             $hash = password_hash($pass, PASSWORD_BCRYPT);
@@ -29,6 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                 if ($roleId) {
                     $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
                         ->execute(['u' => $newId, 'r' => $roleId]);
+                }
+            }
+            foreach (array_unique($categoryIds) as $catId) {
+                if ($catId) {
+                    $pdo->prepare('INSERT INTO user_service_categories (user_id, service_category_id) VALUES (:u, :c)')
+                        ->execute(['u' => $newId, 'c' => $catId]);
                 }
             }
 
@@ -71,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         $email   = trim($_POST['email'] ?? '');
         $phone   = trim($_POST['phone'] ?? '');
         $roleIds = array_map('intval', $_POST['role_ids'] ?? []);
+        $categoryIds = array_map('intval', $_POST['category_ids'] ?? []);
 
         if ($id && $first && $last && $email) {
             $stmt = $pdo->prepare(
@@ -86,6 +94,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                 if ($roleId) {
                     $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)')
                         ->execute(['u' => $id, 'r' => $roleId]);
+                }
+            }
+
+            $pdo->prepare('DELETE FROM user_service_categories WHERE user_id = :id')->execute(['id' => $id]);
+            foreach (array_unique($categoryIds) as $catId) {
+                if ($catId) {
+                    $pdo->prepare('INSERT INTO user_service_categories (user_id, service_category_id) VALUES (:u, :c)')
+                        ->execute(['u' => $id, 'c' => $catId]);
                 }
             }
 
@@ -135,20 +151,26 @@ if (isset($_GET['delete'])) {
 }
 
 $roles = $pdo->query('SELECT id, name FROM roles ORDER BY name')->fetchAll();
+$categories = $pdo->query("SELECT id, name FROM service_categories WHERE status = 'active' ORDER BY name")->fetchAll();
 
 $users = $pdo->query(
     "SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.status, u.last_login,
-            GROUP_CONCAT(r.name SEPARATOR ', ') AS role_names,
-            GROUP_CONCAT(ur.role_id SEPARATOR ',') AS role_id_list
+            GROUP_CONCAT(DISTINCT r.name SEPARATOR ', ') AS role_names,
+            GROUP_CONCAT(DISTINCT ur.role_id SEPARATOR ',') AS role_id_list,
+            GROUP_CONCAT(DISTINCT sc.name SEPARATOR ', ') AS category_names,
+            GROUP_CONCAT(DISTINCT usc.service_category_id SEPARATOR ',') AS category_id_list
      FROM users u
      LEFT JOIN user_roles ur ON ur.user_id = u.id
      LEFT JOIN roles r ON r.id = ur.role_id
+     LEFT JOIN user_service_categories usc ON usc.user_id = u.id
+     LEFT JOIN service_categories sc ON sc.id = usc.service_category_id
      GROUP BY u.id
      ORDER BY u.id"
 )->fetchAll();
 
 foreach ($users as &$u) {
     $u['role_ids'] = $u['role_id_list'] ? array_map('intval', explode(',', $u['role_id_list'])) : [];
+    $u['category_ids'] = $u['category_id_list'] ? array_map('intval', explode(',', $u['category_id_list'])) : [];
 }
 unset($u);
 ?>
@@ -197,6 +219,17 @@ unset($u);
                 <input type="checkbox" name="role_ids[]" value="<?= $r['id'] ?>" style="width:auto;"> <?= htmlspecialchars($r['name']) ?>
               </label>
             <?php endforeach; ?>
+          </div>
+        </div>
+        <div class="field">
+          <label>Service Categories (operational department, select any)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; padding:8px 0;">
+            <?php foreach ($categories as $cat): ?>
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); font-weight:400;">
+                <input type="checkbox" name="category_ids[]" value="<?= $cat['id'] ?>" style="width:auto;"> <?= htmlspecialchars($cat['name']) ?>
+              </label>
+            <?php endforeach; ?>
+            <?php if (!$categories): ?><span style="color:var(--muted); font-size:12px;">No categories yet — add some from <a href="service_categories_master.php">Service Categories</a>.</span><?php endif; ?>
           </div>
         </div>
         <button type="submit" class="btn primary">Save user</button>
@@ -257,6 +290,16 @@ unset($u);
                     <?php foreach ($roles as $r): ?>
                       <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); font-weight:400;">
                         <input type="checkbox" name="role_ids[]" value="<?= $r['id'] ?>" style="width:auto;" <?= in_array($r['id'], $u['role_ids'], true) ? 'checked' : '' ?>> <?= htmlspecialchars($r['name']) ?>
+                      </label>
+                    <?php endforeach; ?>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Service Categories (operational department, select any)</label>
+                  <div style="display:flex; flex-wrap:wrap; gap:14px; padding:8px 0;">
+                    <?php foreach ($categories as $cat): ?>
+                      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); font-weight:400;">
+                        <input type="checkbox" name="category_ids[]" value="<?= $cat['id'] ?>" style="width:auto;" <?= in_array($cat['id'], $u['category_ids'], true) ? 'checked' : '' ?>> <?= htmlspecialchars($cat['name']) ?>
                       </label>
                     <?php endforeach; ?>
                   </div>

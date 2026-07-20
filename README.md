@@ -51,6 +51,19 @@ audit.php                Audit log viewer
 logout.php               Session teardown
 ```
 
+## Jobs, Service Categories & Billing Module
+
+Individual billable work orders drawn against a contract's rate structure — separate from the contract lifecycle itself. **Completing or billing a job never changes the contract's own status.**
+
+Workflow:
+1. **Service Categories** (`service_categories_master.php`) — operational departments (Port Operation, Crew Operations, MOD Clearance, Logistics C&F). Assign users to one or more categories from `users.php`.
+2. **Create Job** (`jobs.php`) — pick a contract, then a specific rate structure line item from that contract (the unit rate is looked up server-side, not trusted from the client), a service category, and an assignee (filtered to users in that category).
+3. **Complete Job** (`job_view.php`) — the assigned worker (or Admin/Super Admin) fills in quantity completed and notes, then closes the job. This flips `work_status` to `completed` and makes it visible in the Billing Queue.
+4. **Billing Queue** (`billing.php`) — Billing/Admin/Super Admin see all completed jobs pending invoicing, grouped by billing status.
+5. **Generate Proforma Invoice**, then **Generate Final Invoice** (`job_view.php`) — each generates a real PDF (via the bundled FPDF library, `lib/fpdf/`) saved under `uploads/invoices/proforma/` or `uploads/invoices/final/`, with its own number series (`ARYAPROF01...`, `ARYAINV01...`).
+
+Tables: `service_categories`, `user_service_categories`, `jobs`, `invoices`. New role: `Billing` (can review completed jobs and generate invoices, alongside Admin/Super Admin — via `canManageBilling()` in `includes/auth.php`).
+
 ## Customer & Contract Module
 
 Mirrors the onboarding workflow from `Process_to_Create_Customer_and_Contact.docx`:

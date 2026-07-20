@@ -52,9 +52,9 @@ function handleContractCreate(PDO $pdo, int $apiKeyId): void
     $stmt = $pdo->prepare(
         "INSERT INTO contracts
             (contract_number, customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
-             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency)
+             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency, rate_amount)
          VALUES
-            (:cnum, :cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency)"
+            (:cnum, :cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency, :rate_amount)"
     );
     $stmt->execute([
         'cnum' => $contractNumber,
@@ -70,6 +70,7 @@ function handleContractCreate(PDO $pdo, int $apiKeyId): void
         'remarks' => $body['remarks'] ?? null,
         'invoicing' => $body['invoicing_to_different_principal'] ?? 'no',
         'currency' => $body['currency'] ?? 'INR',
+        'rate_amount' => $body['rate_amount'] ?? null,
     ]);
     $contractId = (int)$pdo->lastInsertId();
     $pdo->commit();

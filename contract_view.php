@@ -49,6 +49,104 @@ if ($isModifyRequest && !$canModify) {
     $message = 'Only Admin or Super Admin can modify a drafted contract or finalize it.';
 }
 
+// Copy/duplicate this contract into a new draft — new contract number, blank
+// finalize fields and attachments, but carries over operators and rate structure
+// as a starting point. Same permission as creating any new offer.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'copy_contract') {
+    if (!canCreate()) {
+        $message = 'You do not have permission to copy contracts.';
+    } else {
+        $pdo->beginTransaction();
+        try {
+            $newNumber = generateContractNumber($pdo);
+
+            $insert = $pdo->prepare(
+                "INSERT INTO contracts
+                    (contract_number, customer_id, agency_coordinator, effective_date, contract_type,
+                     bid_ref_no, bid_ref_date, bid_last_submission_date, bid_open_date, short_contract_no,
+                     remarks, invoicing_to_different_principal, currency, rate_amount, status)
+                 VALUES
+                    (:cnum, :cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open,
+                     :short_no, :remarks, :invoicing, :currency, :rate_amount, 'draft')"
+            );
+            $insert->execute([
+                'cnum' => $newNumber,
+                'cid' => $contract['customer_id'],
+                'agency' => $contract['agency_coordinator'],
+                'eff' => $contract['effective_date'],
+                'ctype' => $contract['contract_type'],
+                'bid_ref' => $contract['bid_ref_no'],
+                'bid_ref_date' => $contract['bid_ref_date'],
+                'bid_last' => $contract['bid_last_submission_date'],
+                'bid_open' => $contract['bid_open_date'],
+                'short_no' => $contract['short_contract_no'],
+                'remarks' => $contract['remarks'],
+                'invoicing' => $contract['invoicing_to_different_principal'],
+                'currency' => $contract['currency'],
+                'rate_amount' => $contract['rate_amount'],
+            ]);
+            $newContractId = (int)$pdo->lastInsertId();
+
+            // Copy operators
+            $ops = $pdo->prepare('SELECT * FROM contract_operators WHERE contract_id = :id');
+            $ops->execute(['id' => $contractId]);
+            $opInsert = $pdo->prepare(
+                "INSERT INTO contract_operators (contract_id, operator, contract_no, project_name, project_abbreviation, billing_address_id)
+                 VALUES (:cid, :op, :no, :pname, :pabbr, :baddr)"
+            );
+            foreach ($ops->fetchAll() as $op) {
+                $opInsert->execute([
+                    'cid' => $newContractId, 'op' => $op['operator'], 'no' => $op['contract_no'],
+                    'pname' => $op['project_name'], 'pabbr' => $op['project_abbreviation'], 'baddr' => $op['billing_address_id'],
+                ]);
+            }
+
+            // Copy rate groups + their rate rows
+            $groups = $pdo->prepare('SELECT * FROM contract_rate_groups WHERE contract_id = :id');
+            $groups->execute(['id' => $contractId]);
+            $groupInsert = $pdo->prepare(
+                "INSERT INTO contract_rate_groups
+                    (contract_id, contract_clause_no, rate_for, effective_date, service_tax_applicable,
+                     statutory_charges_applicable, estimated_quantity, disbursement_currency, remarks,
+                     printing_remarks, printing_remarks2, chargeability_options)
+                 VALUES
+                    (:cid, :clause, :rate_for, :eff, :stax, :stat, :qty, :curr, :remarks, :pr1, :pr2, :chg)"
+            );
+            $itemInsert = $pdo->prepare(
+                "INSERT INTO contract_rate_items (rate_group_id, location, per_unit, priority, mod_type, rate)
+                 VALUES (:rg, :loc, :per, :prio, :mod, :rate)"
+            );
+            foreach ($groups->fetchAll() as $group) {
+                $groupInsert->execute([
+                    'cid' => $newContractId, 'clause' => $group['contract_clause_no'], 'rate_for' => $group['rate_for'],
+                    'eff' => $group['effective_date'], 'stax' => $group['service_tax_applicable'],
+                    'stat' => $group['statutory_charges_applicable'], 'qty' => $group['estimated_quantity'],
+                    'curr' => $group['disbursement_currency'], 'remarks' => $group['remarks'],
+                    'pr1' => $group['printing_remarks'], 'pr2' => $group['printing_remarks2'], 'chg' => $group['chargeability_options'],
+                ]);
+                $newGroupId = (int)$pdo->lastInsertId();
+
+                $items = $pdo->prepare('SELECT * FROM contract_rate_items WHERE rate_group_id = :id');
+                $items->execute(['id' => $group['id']]);
+                foreach ($items->fetchAll() as $item) {
+                    $itemInsert->execute([
+                        'rg' => $newGroupId, 'loc' => $item['location'], 'per' => $item['per_unit'],
+                        'prio' => $item['priority'], 'mod' => $item['mod_type'], 'rate' => $item['rate'],
+                    ]);
+                }
+            }
+
+            $pdo->commit();
+            logAction($_SESSION['user_id'], 'contract.copy', "Copied contract #$contractId to new contract #$newContractId ($newNumber)");
+            header("Location: contract_view.php?id=$newContractId");
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $message = 'Failed to copy contract: ' . $e->getMessage();
+        }
+    }
+}
+
 // Edit offer/contract details
 if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_contract') {
     $stmt = $pdo->prepare(
@@ -56,7 +154,7 @@ if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? 
             agency_coordinator = :agency, effective_date = :eff, contract_type = :ctype,
             bid_ref_no = :bid_ref, bid_ref_date = :bid_ref_date, bid_last_submission_date = :bid_last,
             bid_open_date = :bid_open, short_contract_no = :short_no, remarks = :remarks,
-            invoicing_to_different_principal = :invoicing, currency = :currency
+            invoicing_to_different_principal = :invoicing, currency = :currency, rate_amount = :rate_amount
          WHERE id = :id"
     );
     $stmt->execute([
@@ -71,6 +169,7 @@ if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? 
         'remarks' => $_POST['remarks'] ?: null,
         'invoicing' => $_POST['invoicing_to_different_principal'] ?? 'no',
         'currency' => $_POST['currency'] ?: 'INR',
+        'rate_amount' => $_POST['rate_amount'] !== '' ? $_POST['rate_amount'] : null,
         'id' => $contractId,
     ]);
     logAction($_SESSION['user_id'], 'contract.update', "Updated details for contract #$contractId");
@@ -194,6 +293,14 @@ $attachments = $pdo->prepare('SELECT * FROM contract_attachments WHERE contract_
 $attachments->execute(['id' => $contractId]);
 $attachments = $attachments->fetchAll();
 
+$contractJobs = $pdo->prepare(
+    "SELECT j.*, CONCAT(u.first_name, ' ', u.last_name) AS assigned_name
+     FROM jobs j LEFT JOIN users u ON u.id = j.assigned_to
+     WHERE j.contract_id = :id ORDER BY j.id DESC"
+);
+$contractJobs->execute(['id' => $contractId]);
+$contractJobs = $contractJobs->fetchAll();
+
 $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract['status'] === 'reject' ? 'suspended' : 'inactive');
 ?>
 <!DOCTYPE html>
@@ -215,6 +322,12 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     <div class="topbar">
       <div class="breadcrumb"><a href="contracts.php">Offers &amp; Contracts</a> &middot; <strong><?= htmlspecialchars($contract['contract_number'] ?? ('#' . $contractId)) ?></strong> &middot; <?= htmlspecialchars($contract['customer_name']) ?></div>
       <div style="display:flex; align-items:center; gap:12px;">
+        <?php if (canCreate()): ?>
+        <form method="post" style="display:inline;" onsubmit="return confirm('Copy this contract into a new draft? Operators and rate structure will be duplicated; attachments and finalize dates will not.');">
+          <input type="hidden" name="action" value="copy_contract">
+          <button type="submit" class="btn">Copy Contract</button>
+        </form>
+        <?php endif; ?>
         <?php if (isAdminOrSuperAdmin()): ?>
         <button type="button" class="btn" id="toggleEditContract">Edit Details</button>
         <?php endif; ?>
@@ -290,6 +403,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
               <option value="yes" <?= $contract['invoicing_to_different_principal'] === 'yes' ? 'selected' : '' ?>>Yes</option>
             </select>
           </div>
+          <div class="field"><label>Rate Amount</label><input type="number" step="0.01" name="rate_amount" value="<?= htmlspecialchars($contract['rate_amount'] ?? '') ?>" placeholder="Total contract value"></div>
         </div>
         <div class="field"><label>Remarks</label><input name="remarks" value="<?= htmlspecialchars($contract['remarks'] ?? '') ?>"></div>
         <button type="submit" class="btn primary">Save Changes</button>
@@ -303,9 +417,10 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
       <div class="card"><div class="card-title">Contract Number</div><div class="mono" style="font-size:18px; color:var(--cyan);"><?= htmlspecialchars($contract['contract_number'] ?? '—') ?></div></div>
       <div class="card"><div class="card-title">Contract Type</div><div style="font-size:15px; font-weight:600;"><?= htmlspecialchars($contract['contract_type'] ?? '—') ?></div></div>
       <div class="card"><div class="card-title">Effective Date</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['effective_date'] ?? '—') ?></div></div>
-      <div class="card"><div class="card-title">Currency</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['currency']) ?></div></div>
+      <div class="card"><div class="card-title">Rate Amount</div><div class="mono" style="font-size:15px; color:var(--cyan);"><?= $contract['rate_amount'] !== null ? htmlspecialchars($contract['currency'] . ' ' . number_format((float)$contract['rate_amount'], 2)) : '—' ?></div></div>
     </div>
     <div class="grid grid-4" style="margin-bottom:20px;">
+      <div class="card"><div class="card-title">Currency</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['currency']) ?></div></div>
       <div class="card"><div class="card-title">Agency Co-ordinator</div><div style="font-size:15px;"><?= htmlspecialchars($contract['agency_coordinator'] ?? '—') ?></div></div>
     </div>
 
@@ -496,6 +611,35 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
             </tr>
             <?php endforeach; ?>
             <?php if (!$attachments): ?><tr><td colspan="3" style="color:var(--muted)">No attachments yet.</td></tr><?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Jobs on this Contract -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <h3 style="margin:0;">Jobs on this Contract</h3>
+        <?php if (canCreate()): ?>
+        <a href="jobs.php" class="btn" style="font-size:12px; padding:6px 12px;">+ New Job</a>
+        <?php endif; ?>
+      </div>
+      <p style="color:var(--muted); font-size:12px; margin:4px 0 12px;">Individual billable work orders drawn against this contract's rate structure. Completing or billing a job never changes this contract's own status.</p>
+      <div class="table-wrap" style="border:none;">
+        <table>
+          <thead><tr><th>Job No.</th><th>Title</th><th>Assigned To</th><th>Work Status</th><th>Billing</th><th></th></tr></thead>
+          <tbody>
+            <?php foreach ($contractJobs as $cj): ?>
+            <tr>
+              <td class="mono" style="color:var(--cyan)"><?= htmlspecialchars($cj['job_number'] ?? '—') ?></td>
+              <td><?= htmlspecialchars($cj['title']) ?></td>
+              <td><?= htmlspecialchars($cj['assigned_name'] ?? 'Unassigned') ?></td>
+              <td><span class="badge <?= $cj['work_status'] === 'completed' ? 'active' : 'inactive' ?>"><?= htmlspecialchars($cj['work_status']) ?></span></td>
+              <td><span class="badge <?= $cj['billing_status'] === 'final_invoiced' ? 'active' : ($cj['billing_status'] === 'proforma_generated' ? 'inactive' : 'suspended') ?>"><?= htmlspecialchars($cj['billing_status']) ?></span></td>
+              <td><a href="job_view.php?id=<?= $cj['id'] ?>">Open &rarr;</a></td>
+            </tr>
+            <?php endforeach; ?>
+            <?php if (!$contractJobs): ?><tr><td colspan="6" style="color:var(--muted)">No jobs created against this contract yet.</td></tr><?php endif; ?>
           </tbody>
         </table>
       </div>

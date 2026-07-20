@@ -16,10 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $stmt = $pdo->prepare(
         "INSERT INTO contracts
             (contract_number, customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
-             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency)
+             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency, rate_amount)
          VALUES
             (:cnum, :cid, :agency, :eff_date, :ctype, :bid_ref, :bid_ref_date,
-             :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency)"
+             :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency, :rate_amount)"
     );
     $stmt->execute([
         'cnum' => $contractNumber,
@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         'remarks' => $_POST['remarks'] ?: null,
         'invoicing' => $_POST['invoicing_to_different_principal'] ?? 'no',
         'currency' => $_POST['currency'] ?: 'INR',
+        'rate_amount' => $_POST['rate_amount'] !== '' ? $_POST['rate_amount'] : null,
     ]);
     $contractId = (int)$pdo->lastInsertId();
     $pdo->commit();
@@ -152,6 +153,7 @@ $contracts = $pdo->query(
               <option value="yes">Yes</option>
             </select>
           </div>
+          <div class="field"><label>Rate Amount</label><input type="number" step="0.01" name="rate_amount" placeholder="Total contract value"></div>
         </div>
         <div class="field"><label>Remarks</label><input name="remarks"></div>
         <button type="submit" class="btn primary">Save &amp; Continue</button>
@@ -162,7 +164,7 @@ $contracts = $pdo->query(
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>#</th><th>Contract No.</th><th>Customer</th><th>Type</th><th>Effective Date</th><th>Status</th><th></th></tr>
+          <tr><th>#</th><th>Contract No.</th><th>Customer</th><th>Type</th><th>Effective Date</th><th>Rate Amount</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           <?php foreach ($contracts as $ct): ?>
@@ -172,12 +174,13 @@ $contracts = $pdo->query(
             <td><?= htmlspecialchars($ct['customer_name']) ?></td>
             <td style="color:var(--muted)"><?= htmlspecialchars($ct['contract_type'] ?? '—') ?></td>
             <td class="mono" style="color:var(--muted)"><?= htmlspecialchars($ct['effective_date'] ?? '—') ?></td>
+            <td class="mono"><?= $ct['rate_amount'] !== null ? htmlspecialchars($ct['currency'] . ' ' . number_format((float)$ct['rate_amount'], 2)) : '—' ?></td>
             <td><span class="badge <?= $ct['status'] === 'finalised' ? 'active' : ($ct['status'] === 'reject' ? 'suspended' : 'inactive') ?>"><?= htmlspecialchars($ct['status']) ?></span></td>
             <td><a href="contract_view.php?id=<?= $ct['id'] ?>">Open &rarr;</a></td>
           </tr>
           <?php endforeach; ?>
           <?php if (!$contracts): ?>
-          <tr><td colspan="7" style="color:var(--muted)">No offers/contracts yet.</td></tr>
+          <tr><td colspan="8" style="color:var(--muted)">No offers/contracts yet.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>

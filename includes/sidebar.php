@@ -39,6 +39,19 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
   </div>
 
   <div class="nav-group">
+    <div class="nav-label">Operations</div>
+    <a class="nav-link <?= $currentPage === 'jobs.php' ? 'active' : '' ?>" href="jobs.php">
+      <span class="nav-icon">&#128736;</span> Jobs
+    </a>
+    <a class="nav-link <?= $currentPage === 'billing.php' ? 'active' : '' ?>" href="billing.php">
+      <span class="nav-icon">&#128179;</span> Billing Queue
+    </a>
+    <a class="nav-link <?= $currentPage === 'service_categories_master.php' ? 'active' : '' ?>" href="service_categories_master.php">
+      <span class="nav-icon">&#127991;</span> Service Categories
+    </a>
+  </div>
+
+  <div class="nav-group">
     <div class="nav-label">Monitoring</div>
     <a class="nav-link <?= $currentPage === 'audit.php' ? 'active' : '' ?>" href="audit.php">
       <span class="nav-icon">&#128220;</span> Audit Log

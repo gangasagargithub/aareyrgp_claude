@@ -133,6 +133,66 @@ function canResetPassword(): bool
     return isSuperAdmin() || hasRole('Admin') || hasRole('Editor');
 }
 
+/** Billing role (plus Super Admin/Admin) can review completed jobs and generate invoices. */
+function canManageBilling(): bool
+{
+    return isSuperAdmin() || hasRole('Admin') || hasRole('Billing');
+}
+
+/**
+ * A job can be closed (completion info filled in) by the person it's assigned
+ * to, OR by anyone with general edit rights (Super Admin/Admin) — matches
+ * "he should fill the information and close the job" for the assigned worker,
+ * while still letting an admin close/correct it on someone's behalf.
+ */
+function canCloseJob(array $job): bool
+{
+    $currentUserId = $_SESSION['user_id'] ?? 0;
+    return (int)($job['assigned_to'] ?? 0) === (int)$currentUserId || canEdit();
+}
+
+/** Generates the next job number in the ARYAJOB01, ARYAJOB02, ... series. */
+function generateJobNumber(PDO $pdo): string
+{
+    $stmt = $pdo->query(
+        "SELECT job_number FROM jobs
+         WHERE job_number REGEXP '^ARYAJOB[0-9]+$'
+         ORDER BY CAST(SUBSTRING(job_number, 8) AS UNSIGNED) DESC
+         LIMIT 1"
+    );
+    $last = $stmt->fetchColumn();
+    $nextNum = $last ? ((int)substr($last, 7) + 1) : 1;
+
+    return 'ARYAJOB' . str_pad((string)$nextNum, 2, '0', STR_PAD_LEFT);
+}
+
+/**
+ * Generates the next invoice number for a given type.
+ * Proforma: ARYAPROF01, ARYAPROF02, ...
+ * Final:    ARYAINV01, ARYAINV02, ...
+ */
+function generateInvoiceNumber(PDO $pdo, string $type): string
+{
+    $prefix = $type === 'proforma' ? 'ARYAPROF' : 'ARYAINV';
+    $prefixLen = strlen($prefix) + 1;
+
+    $stmt = $pdo->prepare(
+        "SELECT invoice_number FROM invoices
+         WHERE invoice_type = :type AND invoice_number REGEXP :pattern
+         ORDER BY CAST(SUBSTRING(invoice_number, :len) AS UNSIGNED) DESC
+         LIMIT 1"
+    );
+    $stmt->execute([
+        'type' => $type,
+        'pattern' => '^' . $prefix . '[0-9]+$',
+        'len' => $prefixLen,
+    ]);
+    $last = $stmt->fetchColumn();
+    $nextNum = $last ? ((int)substr($last, strlen($prefix)) + 1) : 1;
+
+    return $prefix . str_pad((string)$nextNum, 2, '0', STR_PAD_LEFT);
+}
+
 /** @deprecated kept as an alias for canEdit() so existing call sites keep working. */
 function isAdminOrSuperAdmin(): bool
 {
