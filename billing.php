@@ -73,11 +73,12 @@ usort($customerTotals, fn($a, $b) => $b['total'] <=> $a['total']);
     <div class="error-box" style="margin-bottom:20px;">You can view this queue, but only Billing, Admin, or Super Admin can generate invoices. Open a job to see options.</div>
     <?php endif; ?>
 
-    <h3 style="margin:0 0 10px;">Total Billing by Customer</h3>
+    <h3 style="margin:0 2px 2px;">Total Billing by Customer</h3>
+    <p style="margin:0 0 10px; color:var(--muted); font-size:12px;">Taxable value (excl. GST) across completed jobs — see each job's invoices for the GST breakup.</p>
     <div class="table-wrap" style="margin-bottom:20px;">
       <table>
         <thead>
-          <tr><th>Customer</th><th>Completed Jobs</th><th>Total Billing Amount</th></tr>
+          <tr><th>Customer</th><th>Completed Jobs</th><th>Total Billing Amount (excl. GST)</th></tr>
         </thead>
         <tbody>
           <?php foreach ($customerTotals as $ct): ?>

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/invoice_pdf.php';
+require_once __DIR__ . '/includes/gst.php';
 requireLogin();
 
 $pdo = getConnection();
@@ -10,6 +11,7 @@ $messageType = 'error';
 
 $stmt = $pdo->prepare(
     "SELECT j.*, ct.contract_number, ct.currency, ct.status AS contract_status,
+            ct.gst_applicable, ct.gst_rate,
             c.customer_name, c.id AS customer_id,
             CONCAT(u.first_name, ' ', u.last_name) AS assigned_name,
             CONCAT(cb.first_name, ' ', cb.last_name) AS completed_name,
@@ -73,19 +75,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
         $message = 'A proforma invoice was already generated for this job.';
     } else {
         $amount = (float)$job['quantity_completed'] * (float)$job['unit_rate'];
+        $recipient = resolveGstParty($pdo, (int)$job['contract_id'], (int)$job['customer_id']);
+        $gst = computeGstBreakup($amount, $job['gst_applicable'] ?? 'yes', (float)($job['gst_rate'] ?? 0), $recipient['state']);
         $invoiceNumber = generateInvoiceNumber($pdo, 'proforma');
         $pdfPath = generateInvoicePdf($job, [
             'id' => $job['contract_id'], 'contract_number' => $job['contract_number'],
             'customer_name' => $job['customer_name'], 'currency' => $job['currency'],
-        ], 'proforma', $invoiceNumber, $amount);
+        ], 'proforma', $invoiceNumber, $amount, $gst, $recipient);
 
         $stmt = $pdo->prepare(
-            "INSERT INTO invoices (invoice_number, invoice_type, job_id, contract_id, amount, generated_by, pdf_path)
-             VALUES (:num, 'proforma', :jid, :cid, :amt, :uid, :path)"
+            "INSERT INTO invoices
+                (invoice_number, invoice_type, job_id, contract_id, amount,
+                 recipient_gstin, recipient_state, place_of_supply, tax_type, gst_rate,
+                 cgst_amount, sgst_amount, igst_amount, total_amount, generated_by, pdf_path)
+             VALUES
+                (:num, 'proforma', :jid, :cid, :amt,
+                 :rgstin, :rstate, :pos, :ttype, :grate,
+                 :cgst, :sgst, :igst, :total, :uid, :path)"
         );
         $stmt->execute([
             'num' => $invoiceNumber, 'jid' => $jobId, 'cid' => $job['contract_id'],
-            'amt' => $amount, 'uid' => $_SESSION['user_id'], 'path' => $pdfPath,
+            'amt' => $amount, 'rgstin' => $recipient['gstin'], 'rstate' => $recipient['state'],
+            'pos' => $recipient['state'], 'ttype' => $gst['tax_type'], 'grate' => $gst['gst_rate'],
+            'cgst' => $gst['cgst_amount'], 'sgst' => $gst['sgst_amount'], 'igst' => $gst['igst_amount'],
+            'total' => $gst['total_amount'], 'uid' => $_SESSION['user_id'], 'path' => $pdfPath,
         ]);
         $pdo->prepare("UPDATE jobs SET billing_status = 'proforma_generated' WHERE id = :id")->execute(['id' => $jobId]);
 
@@ -103,19 +116,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
         $message = 'Generate the proforma invoice first.';
     } else {
         $amount = (float)$job['quantity_completed'] * (float)$job['unit_rate'];
+        $recipient = resolveGstParty($pdo, (int)$job['contract_id'], (int)$job['customer_id']);
+        $gst = computeGstBreakup($amount, $job['gst_applicable'] ?? 'yes', (float)($job['gst_rate'] ?? 0), $recipient['state']);
         $invoiceNumber = generateInvoiceNumber($pdo, 'final');
         $pdfPath = generateInvoicePdf($job, [
             'id' => $job['contract_id'], 'contract_number' => $job['contract_number'],
             'customer_name' => $job['customer_name'], 'currency' => $job['currency'],
-        ], 'final', $invoiceNumber, $amount);
+        ], 'final', $invoiceNumber, $amount, $gst, $recipient);
 
         $stmt = $pdo->prepare(
-            "INSERT INTO invoices (invoice_number, invoice_type, job_id, contract_id, amount, generated_by, pdf_path)
-             VALUES (:num, 'final', :jid, :cid, :amt, :uid, :path)"
+            "INSERT INTO invoices
+                (invoice_number, invoice_type, job_id, contract_id, amount,
+                 recipient_gstin, recipient_state, place_of_supply, tax_type, gst_rate,
+                 cgst_amount, sgst_amount, igst_amount, total_amount, generated_by, pdf_path)
+             VALUES
+                (:num, 'final', :jid, :cid, :amt,
+                 :rgstin, :rstate, :pos, :ttype, :grate,
+                 :cgst, :sgst, :igst, :total, :uid, :path)"
         );
         $stmt->execute([
             'num' => $invoiceNumber, 'jid' => $jobId, 'cid' => $job['contract_id'],
-            'amt' => $amount, 'uid' => $_SESSION['user_id'], 'path' => $pdfPath,
+            'amt' => $amount, 'rgstin' => $recipient['gstin'], 'rstate' => $recipient['state'],
+            'pos' => $recipient['state'], 'ttype' => $gst['tax_type'], 'grate' => $gst['gst_rate'],
+            'cgst' => $gst['cgst_amount'], 'sgst' => $gst['sgst_amount'], 'igst' => $gst['igst_amount'],
+            'total' => $gst['total_amount'], 'uid' => $_SESSION['user_id'], 'path' => $pdfPath,
         ]);
         $pdo->prepare("UPDATE jobs SET billing_status = 'final_invoiced' WHERE id = :id")->execute(['id' => $jobId]);
 
@@ -175,6 +199,7 @@ $computedAmount = ($job['quantity_completed'] !== null && $job['unit_rate'] !== 
       <div class="card"><div class="card-title">Quantity Planned</div><div class="mono" style="font-size:15px;"><?= $job['quantity_planned'] !== null ? number_format((float)$job['quantity_planned'], 2) : '—' ?></div></div>
       <div class="card"><div class="card-title">Quantity Completed</div><div class="mono" style="font-size:15px;"><?= $job['quantity_completed'] !== null ? number_format((float)$job['quantity_completed'], 2) : '—' ?></div></div>
       <div class="card"><div class="card-title">Job Amount</div><div class="mono" style="font-size:15px; color:var(--cyan);"><?= $computedAmount !== null ? htmlspecialchars($job['currency'] . ' ' . number_format($computedAmount, 2)) : '—' ?></div></div>
+      <div class="card"><div class="card-title">GST</div><div class="mono" style="font-size:15px;"><?= ($job['gst_applicable'] ?? 'yes') === 'yes' ? htmlspecialchars(number_format((float)($job['gst_rate'] ?? 0), 2) . '% (per contract)') : 'Not applicable' ?></div></div>
     </div>
 
     <?php if ($job['description']): ?>
@@ -235,18 +260,30 @@ $computedAmount = ($job['quantity_completed'] !== null && $job['unit_rate'] !== 
 
         <div class="table-wrap" style="border:none;">
           <table>
-            <thead><tr><th>Invoice No.</th><th>Type</th><th>Amount</th><th>Generated</th><th></th></tr></thead>
+            <thead><tr><th>Invoice No.</th><th>Type</th><th>Taxable Value</th><th>GST</th><th>Total</th><th>Generated</th><th></th></tr></thead>
             <tbody>
               <?php foreach ($invoices as $inv): ?>
+              <?php
+                $taxLabel = '—';
+                if ($inv['tax_type'] === 'cgst_sgst') {
+                    $taxLabel = 'CGST+SGST ' . number_format((float)$inv['gst_rate'], 2) . '% = ' . $job['currency'] . ' ' . number_format((float)$inv['cgst_amount'] + (float)$inv['sgst_amount'], 2);
+                } elseif ($inv['tax_type'] === 'igst') {
+                    $taxLabel = 'IGST ' . number_format((float)$inv['gst_rate'], 2) . '% = ' . $job['currency'] . ' ' . number_format((float)$inv['igst_amount'], 2);
+                } else {
+                    $taxLabel = 'Not applicable';
+                }
+              ?>
               <tr>
                 <td class="mono"><?= htmlspecialchars($inv['invoice_number']) ?></td>
-                <td><span class="badge <?= $inv['invoice_type'] === 'final' ? 'active' : 'inactive' ?>"><?= htmlspecialchars($inv['invoice_type']) ?></span></td>
+                <td><span class="badge <?= $inv['invoice_type'] === 'final' ? 'active' : 'inactive' ?>"><?= htmlspecialchars($inv['invoice_type'] === 'final' ? 'tax invoice' : $inv['invoice_type']) ?></span></td>
                 <td class="mono"><?= htmlspecialchars($job['currency'] . ' ' . number_format((float)$inv['amount'], 2)) ?></td>
+                <td class="mono" style="color:var(--muted); font-size:12px;"><?= htmlspecialchars($taxLabel) ?></td>
+                <td class="mono" style="color:var(--cyan)"><strong><?= htmlspecialchars($job['currency'] . ' ' . number_format((float)$inv['total_amount'], 2)) ?></strong></td>
                 <td class="mono" style="color:var(--muted)"><?= htmlspecialchars($inv['generated_at']) ?></td>
                 <td><a href="<?= htmlspecialchars($inv['pdf_path']) ?>" target="_blank">Download PDF</a></td>
               </tr>
               <?php endforeach; ?>
-              <?php if (!$invoices): ?><tr><td colspan="5" style="color:var(--muted)">No invoices generated yet.</td></tr><?php endif; ?>
+              <?php if (!$invoices): ?><tr><td colspan="7" style="color:var(--muted)">No invoices generated yet.</td></tr><?php endif; ?>
             </tbody>
           </table>
         </div>

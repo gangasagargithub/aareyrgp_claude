@@ -64,10 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'copy_
                 "INSERT INTO contracts
                     (contract_number, customer_id, agency_coordinator, effective_date, contract_type,
                      bid_ref_no, bid_ref_date, bid_last_submission_date, bid_open_date, short_contract_no,
-                     remarks, invoicing_to_different_principal, currency, rate_amount, status)
+                     remarks, invoicing_to_different_principal, currency, rate_amount, gst_applicable, gst_rate, status)
                  VALUES
                     (:cnum, :cid, :agency, :eff, :ctype, :bid_ref, :bid_ref_date, :bid_last, :bid_open,
-                     :short_no, :remarks, :invoicing, :currency, :rate_amount, 'draft')"
+                     :short_no, :remarks, :invoicing, :currency, :rate_amount, :gst_applicable, :gst_rate, 'draft')"
             );
             $insert->execute([
                 'cnum' => $newNumber,
@@ -84,6 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'copy_
                 'invoicing' => $contract['invoicing_to_different_principal'],
                 'currency' => $contract['currency'],
                 'rate_amount' => $contract['rate_amount'],
+                'gst_applicable' => $contract['gst_applicable'] ?? 'yes',
+                'gst_rate' => $contract['gst_rate'] ?? 18.00,
             ]);
             $newContractId = (int)$pdo->lastInsertId();
 
@@ -154,7 +156,8 @@ if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? 
             agency_coordinator = :agency, effective_date = :eff, contract_type = :ctype,
             bid_ref_no = :bid_ref, bid_ref_date = :bid_ref_date, bid_last_submission_date = :bid_last,
             bid_open_date = :bid_open, short_contract_no = :short_no, remarks = :remarks,
-            invoicing_to_different_principal = :invoicing, currency = :currency, rate_amount = :rate_amount
+            invoicing_to_different_principal = :invoicing, currency = :currency, rate_amount = :rate_amount,
+            gst_applicable = :gst_applicable, gst_rate = :gst_rate
          WHERE id = :id"
     );
     $stmt->execute([
@@ -170,6 +173,8 @@ if ($canModify && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? 
         'invoicing' => $_POST['invoicing_to_different_principal'] ?? 'no',
         'currency' => $_POST['currency'] ?: 'INR',
         'rate_amount' => $_POST['rate_amount'] !== '' ? $_POST['rate_amount'] : null,
+        'gst_applicable' => $_POST['gst_applicable'] ?? 'yes',
+        'gst_rate' => $_POST['gst_rate'] !== '' ? $_POST['gst_rate'] : 18.00,
         'id' => $contractId,
     ]);
     logAction($_SESSION['user_id'], 'contract.update', "Updated details for contract #$contractId");
@@ -405,6 +410,16 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
           </div>
           <div class="field"><label>Rate Amount</label><input type="number" step="0.01" name="rate_amount" value="<?= htmlspecialchars($contract['rate_amount'] ?? '') ?>" placeholder="Total contract value"></div>
         </div>
+        <div class="grid grid-4">
+          <div class="field">
+            <label>GST Applicable</label>
+            <select name="gst_applicable">
+              <option value="yes" <?= ($contract['gst_applicable'] ?? 'yes') === 'yes' ? 'selected' : '' ?>>Yes</option>
+              <option value="no" <?= ($contract['gst_applicable'] ?? 'yes') === 'no' ? 'selected' : '' ?>>No</option>
+            </select>
+          </div>
+          <div class="field"><label>GST Rate (%)</label><input type="number" step="0.01" name="gst_rate" value="<?= htmlspecialchars($contract['gst_rate'] ?? '18.00') ?>" placeholder="e.g. 18.00"></div>
+        </div>
         <div class="field"><label>Remarks</label><input name="remarks" value="<?= htmlspecialchars($contract['remarks'] ?? '') ?>"></div>
         <button type="submit" class="btn primary">Save Changes</button>
       </form>
@@ -422,6 +437,7 @@ $statusBadgeClass = $contract['status'] === 'finalised' ? 'active' : ($contract[
     <div class="grid grid-4" style="margin-bottom:20px;">
       <div class="card"><div class="card-title">Currency</div><div class="mono" style="font-size:15px;"><?= htmlspecialchars($contract['currency']) ?></div></div>
       <div class="card"><div class="card-title">Agency Co-ordinator</div><div style="font-size:15px;"><?= htmlspecialchars($contract['agency_coordinator'] ?? '—') ?></div></div>
+      <div class="card"><div class="card-title">GST</div><div class="mono" style="font-size:15px;"><?= ($contract['gst_applicable'] ?? 'yes') === 'yes' ? htmlspecialchars(number_format((float)($contract['gst_rate'] ?? 0), 2) . '%') : 'Not applicable' ?></div></div>
     </div>
 
     <!-- Operators -->

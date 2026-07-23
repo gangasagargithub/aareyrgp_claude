@@ -16,10 +16,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $stmt = $pdo->prepare(
         "INSERT INTO contracts
             (contract_number, customer_id, agency_coordinator, effective_date, contract_type, bid_ref_no, bid_ref_date,
-             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency, rate_amount)
+             bid_last_submission_date, bid_open_date, short_contract_no, remarks, invoicing_to_different_principal, currency, rate_amount,
+             gst_applicable, gst_rate)
          VALUES
             (:cnum, :cid, :agency, :eff_date, :ctype, :bid_ref, :bid_ref_date,
-             :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency, :rate_amount)"
+             :bid_last, :bid_open, :short_no, :remarks, :invoicing, :currency, :rate_amount,
+             :gst_applicable, :gst_rate)"
     );
     $stmt->execute([
         'cnum' => $contractNumber,
@@ -36,6 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         'invoicing' => $_POST['invoicing_to_different_principal'] ?? 'no',
         'currency' => $_POST['currency'] ?: 'INR',
         'rate_amount' => $_POST['rate_amount'] !== '' ? $_POST['rate_amount'] : null,
+        'gst_applicable' => $_POST['gst_applicable'] ?? 'yes',
+        'gst_rate' => $_POST['gst_rate'] !== '' ? $_POST['gst_rate'] : 18.00,
     ]);
     $contractId = (int)$pdo->lastInsertId();
     $pdo->commit();
@@ -154,6 +158,16 @@ $contracts = $pdo->query(
             </select>
           </div>
           <div class="field"><label>Rate Amount</label><input type="number" step="0.01" name="rate_amount" placeholder="Total contract value"></div>
+        </div>
+        <div class="grid grid-4">
+          <div class="field">
+            <label>GST Applicable</label>
+            <select name="gst_applicable">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="field"><label>GST Rate (%)</label><input type="number" step="0.01" name="gst_rate" value="18.00" placeholder="e.g. 18.00"></div>
         </div>
         <div class="field"><label>Remarks</label><input name="remarks"></div>
         <button type="submit" class="btn primary">Save &amp; Continue</button>
