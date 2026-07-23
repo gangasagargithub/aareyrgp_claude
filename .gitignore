@@ -1,7 +1,12 @@
 # Ignore config folder
-config/
-database/
+config/database.php
+database/full_dump.sql
+database/migration_gst_invoice.sql
+database/schema.sql
 Local/
+
+# But keep company config
+!/config/company.php
 
 # Optional: Ignore vendor (if using Composer)
 vendor/
