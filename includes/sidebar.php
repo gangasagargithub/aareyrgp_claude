@@ -16,11 +16,13 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
     <a class="nav-link <?= $currentPage === 'dashboard.php' ? 'active' : '' ?>" href="dashboard.php">
       <span class="nav-icon">&#9635;</span> Dashboard
     </a>
-    <a class="nav-link <?= $currentPage === 'search.php' ? 'active' : '' ?>" href="search.php">
+  </div>
+ <div class="nav-group">
+        <div class="nav-label">Search</div>
+        <a class="nav-link <?= $currentPage === 'search.php' ? 'active' : '' ?>" href="search.php">
       <span class="nav-icon">&#128269;</span> Search
     </a>
-  </div>
-
+      </div>
   <div class="nav-group">
     <div class="nav-label">Access Control</div>
     <a class="nav-link <?= $currentPage === 'users.php' ? 'active' : '' ?>" href="users.php">
