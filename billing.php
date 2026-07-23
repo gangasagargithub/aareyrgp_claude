@@ -23,6 +23,26 @@ foreach ($jobs as $j) {
     elseif ($j['billing_status'] === 'proforma_generated') $proformaCount++;
     elseif ($j['billing_status'] === 'final_invoiced') $doneCount++;
 }
+
+// Total billing amount per customer (grouped by currency, since a customer
+// can have contracts billed in more than one currency).
+$customerTotals = [];
+foreach ($jobs as $j) {
+    if ($j['quantity_completed'] === null || $j['unit_rate'] === null) continue;
+    $amount = (float)$j['quantity_completed'] * (float)$j['unit_rate'];
+    $key = $j['customer_name'] . '|' . $j['currency'];
+    if (!isset($customerTotals[$key])) {
+        $customerTotals[$key] = [
+            'customer_name' => $j['customer_name'],
+            'currency' => $j['currency'],
+            'total' => 0.0,
+            'job_count' => 0,
+        ];
+    }
+    $customerTotals[$key]['total'] += $amount;
+    $customerTotals[$key]['job_count']++;
+}
+usort($customerTotals, fn($a, $b) => $b['total'] <=> $a['total']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -52,6 +72,27 @@ foreach ($jobs as $j) {
     <?php if (!canManageBilling()): ?>
     <div class="error-box" style="margin-bottom:20px;">You can view this queue, but only Billing, Admin, or Super Admin can generate invoices. Open a job to see options.</div>
     <?php endif; ?>
+
+    <h3 style="margin:0 0 10px;">Total Billing by Customer</h3>
+    <div class="table-wrap" style="margin-bottom:20px;">
+      <table>
+        <thead>
+          <tr><th>Customer</th><th>Completed Jobs</th><th>Total Billing Amount</th></tr>
+        </thead>
+        <tbody>
+          <?php foreach ($customerTotals as $ct): ?>
+          <tr>
+            <td><?= htmlspecialchars($ct['customer_name']) ?></td>
+            <td class="mono" style="color:var(--muted)"><?= $ct['job_count'] ?></td>
+            <td class="mono" style="color:var(--cyan)"><strong><?= htmlspecialchars($ct['currency'] . ' ' . number_format($ct['total'], 2)) ?></strong></td>
+          </tr>
+          <?php endforeach; ?>
+          <?php if (!$customerTotals): ?>
+          <tr><td colspan="3" style="color:var(--muted)">No billable amounts yet.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
 
     <div class="table-wrap">
       <table>
