@@ -8,7 +8,7 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
 <aside class="sidebar">
   <div class="brand">
     <span class="brand-dot"></span>
-    <span class="brand-name">WORKFLOW<small>aareyrgp_claude</small></span>
+    <span class="brand-name">WORKFLOW<small>Operation Software</small></span>
   </div>
 
   <div class="nav-group">
