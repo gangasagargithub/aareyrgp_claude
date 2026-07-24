@@ -8,7 +8,7 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
 <aside class="sidebar">
   <div class="brand">
     <span class="brand-dot"></span>
-    <span class="brand-name">WORKFLOW<small>Operation Software</small></span>
+    <span class="brand-name">WORKFLOW<small>aareyrgp_claude</small></span>
   </div>
 
   <div class="nav-group">
@@ -34,13 +34,16 @@ $initials = strtoupper(substr($_SESSION['first_name'] ?? '?', 0, 1) . substr($_S
   <div class="nav-group">
     <div class="nav-label">Business Development</div>
     <a class="nav-link <?= $currentPage === 'customers.php' ? 'active' : '' ?>" href="customers.php">
-      <span class="nav-icon">&#127970;</span> Customers
+      <span class="nav-icon">&#127970;</span> Customer Master
     </a>
     <a class="nav-link <?= $currentPage === 'contracts.php' ? 'active' : '' ?>" href="contracts.php">
       <span class="nav-icon">&#128196;</span> Offers &amp; Contracts
     </a>
     <a class="nav-link <?= $currentPage === 'rate_structure_master.php' ? 'active' : '' ?>" href="rate_structure_master.php">
       <span class="nav-icon">&#128202;</span> Rate Structure Master
+    </a>
+    <a class="nav-link <?= $currentPage === 'contact_master.php' ? 'active' : '' ?>" href="contact_master.php">
+      <span class="nav-icon">&#128100;</span> Contact Master
     </a>
   </div>
 
